@@ -1,0 +1,5 @@
+"0",""
+"0","## relative abundances"
+"0","relAbundances <- data.frame(g0=mu0/sum(mu0),"
+"0","                            g1=mu1/sum(mu1)) # relative abundance of absolute count"
+"0","plot(logit(relAbundances),col=as.numeric(beta==0)+1)"

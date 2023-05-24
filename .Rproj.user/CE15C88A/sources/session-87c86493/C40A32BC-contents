@@ -1,0 +1,109 @@
+
+library(SingleCellExperiment)
+sce <- readRDS("data/230301_sceAll_interim3.rds")
+sce$sample <- gsub(x=sce$sample, pattern="_Expression_Data", replacement="")
+sce$GCNumber <- unlist(lapply(strsplit(sce$sample, split="_"), "[[", 1))
+sce$GCNumber[sce$GCNumber == "100026"] <- NA
+sce$bc <- unlist(lapply(strsplit(sce$sample, split="_"), "[[", 2))
+sce$bc[sce$bc == "W01"] <- NA
+
+## need to link subject ID to names used on S3
+## use file located at s3://itx-acd-data-id/HPB/OCEAN-JnJ-73763989/73763989HPB2003/liver-scRNA/info/
+meta <- openxlsx::read.xlsx("data/20230227 SummaryBD_INSIGHTsamples.xlsx")
+meta <- meta[!is.na(meta$Sample.ID),]
+metaInsight <- meta[which(meta$Study.ID == "INSIGHT" | meta$Study.ID == "NOPRODPAHPB0013"),]
+
+## add subject and visit info using metadata
+table(metaInsight$`GC-number`)
+table(metaInsight$Index.Sequence)
+metaInsight$GCIndex <- paste0(metaInsight$`GC-number`, "_", metaInsight$Index.Sequence)
+
+# only 47/48 samples have a match
+# note I only match a subpart as some samples have incomplete barcodes in the filename
+sum(unique(unlist(lapply(strsplit(sce$sample,split="-"),"[[",1))) %in% unlist(lapply(strsplit(metaInsight$GCIndex,split="-"),"[[",1)))
+# one sample doesn't have a match, but we'll make it match below.
+matchID <- match(unlist(lapply(strsplit(sce$sample,split="-"),"[[",1)), unlist(lapply(strsplit(metaInsight$GCIndex,split="-"),"[[",1)))
+## add patient that does not have GC number on S3
+matchID[sce$sample == "100026_W01"] <- which(metaInsight$Sample.ID == "100026_W-1")
+any(is.na(matchID))
+sce$sampleID <- metaInsight$Sample.ID[matchID]
+## remove sample not part of INSIGHT
+sce <- sce[,!sce$sampleID == "MCU022g30 FNA cryo"]
+# add subject ID and visit
+sce$subjectID <- substr(sce$sampleID, 1, 6)
+time <- paste0("Week",gsub(x=substr(sce$sampleID, 9, nchar(sce$sampleID)), pattern="-", replacement=""))
+time[time=="Week40 "] <- "Week40"
+table(time)
+sce$time <- factor(time)
+sce$subjectTime <- paste0(sce$subjectID,"_", sce$time)
+table(sce$sampleID, useNA="ifany")
+table(sce$subjectID, useNA="ifany")
+table(sce$time, useNA="ifany")
+
+adef <- haven::read_sas("data/clinical/datasets/adef.sas7bdat")
+adef$subjectID <- unlist(lapply(strsplit(adef$USUBJID, split="-", fixed=TRUE), "[[", 2))
+table(adef$AVISIT)
+adef$time <- NA
+adef$time[adef$AVISIT=="Baseline"] <- "Week1"
+adef$time[adef$AVISIT=="Week 12"] <- "Week12"
+adef$time[adef$AVISIT=="Week 40"] <- "Week40"
+adef$subjTime <- paste0(adef$subjectID, "_", adef$time)
+
+## add ALT
+adefALT <- adef[adef$PARAMCD == "ALT",]
+sce$ALT <- adefALT$AVAL[match(sce$subjectTime, adefALT$subjTime)]
+table(sce$ALT, useNA="ifany")
+
+## add sAg
+adefSAG <- adef[adef$PARAMCD == "HBSAG",]
+sce$sAg <- adefSAG$AVAL[match(sce$subjectTime, adefSAG$subjTime)]
+table(sce$sAg, useNA="ifany")
+adefLSAG <- adef[adef$PARAMCD == "LGHBSAG",]
+sce$logsAg <- adefLSAG$AVAL[match(sce$subjectTime, adefLSAG$subjTime)]
+table(sce$logsAg, useNA="ifany")
+
+## add crAg
+adefCrAG <- adef[adef$PARAMCD == "HBCRAG",]
+sce$crAg <- round(adefCrAG$AVAL[match(sce$subjectTime, adefCrAG$subjTime)], 2)
+table(sce$crAg, useNA="ifany")
+adefLCrAG <- adef[adef$PARAMCD == "LGHBCRAG",]
+sce$logCrAg <- adefLCrAG$AVAL[match(sce$subjectTime, adefLCrAG$subjTime)]
+table(sce$logCrAg, useNA="ifany")
+
+## TODO: HBV RNA. Waiting for up-to-date ADEF file from Pradeep.
+adefRNA <- adef[adef$PARAMCD == "RNA",]
+noMatch <- unique(sce$subjectTime[is.na(match(sce$subjectTime, adefRNA$subjTime))])
+
+
+
+sce$HBVRNA <- round(adefRNA$AVAL[match(sce$subjectTime, adefRNA$subjTime)], 2)
+table(sce$HBVRNA, useNA="ifany")
+adefLRNA <- adef[adef$PARAMCD == "LGRNA",]
+sce$logRNA <- round(adefLRNA$AVAL[match(sce$subjectTime, adefLRNA$subjTime)], 2)
+table(sce$logRNA, useNA="ifany")
+
+
+## HBV DNA
+adefDNA <- adef[adef$PARAMCD == "DNA",]
+sce$HBVDNA <- round(adefDNA$AVAL[match(sce$subjectTime, adefDNA$subjTime)], 2)
+table(sce$HBVDNA, useNA="ifany")
+adefLDNA <- adef[adef$PARAMCD == "LGDNA",]
+sce$logDNA <- round(adefLDNA$AVAL[match(sce$subjectTime, adefLDNA$subjTime)], 2)
+table(sce$logDNA, useNA="ifany")
+
+## panel 
+dfPanel <- unique(data.frame(subjTime = adef$subjTime, 
+                             panel = adef$APANEL))
+sce$panel <- dfPanel$panel[match(sce$subjectTime, dfPanel$subjTime)]
+
+## cDNA batch
+sce$cDNABatch <- metaInsight$`Date.cDNA.(DD/MM/YYYY)`[matchID]
+table(sce$cDNABatch, useNA="ifany")
+sce$PCRBatch <- metaInsight$`Date.Index.PCR.(DD/MM/YYYY)`[matchID]
+table(sce$PCRBatch, useNA="ifany")
+sce$seqBatch <- metaInsight$`GC-number`[matchID]
+table(sce$seqBatch, useNA="ifany")
+
+saveRDS(sce, file="../data/221129_sceAnnotated.rds")
+
+

@@ -1,0 +1,211 @@
+---
+title: "Analysis of intrahepatic HBcAg expression"
+author: "Koen Van den Berge"
+date: '2023-04-25'
+output: html_document
+---
+
+
+# Import
+
+```{r}
+data <- read.csv("../data/crAgHinrich/R_Results.csv")
+data2 <- read.csv("../data/crAgHinrich/R_Results_additionalSamples.csv")
+data2$filename <- gsub(x=data2$filename, pattern="W1", replacement="1")
+data2$filename <- gsub(x=data2$filename, pattern="W40", replacement="2")
+matches <- match(data2$filename, data$filename)
+matches <- matches[!is.na(matches)]
+data[matches,] <- data2[-3,] # third sample is not in there
+data <- rbind(data, data2[3,])
+data$Subject.ID <- unlist(lapply(strsplit(data$filename, split="_"), "[", 1))
+data$timepoint <- gsub(x=unlist(lapply(strsplit(data$filename, split="_"), "[", 2)),
+                       pattern=".csv", replacement="", fixed = TRUE)
+data$Visit.Week <- NA
+data$Visit.Week[data$timepoint == "1"] <- "W -1"
+data$Visit.Week[data$timepoint == "2"] <- "W 40"
+data$Visit.Week[data$timepoint == "FUW24"] <- "FUW 24"
+data$subjectTime <- paste0(data$Subject.ID,"_",data$Visit.Week)
+```
+
+# Merge with clinical data for visit date
+
+```{r}
+coreDf <- openxlsx::read.xlsx("../data/clinical/CORE Export for Client 2023-02-21_1355.xlsx",
+                              detectDates = FALSE)
+table(coreDf$Visit.ID)
+coreDf$Visit.Week <- coreDf$Visit.ID
+coreDf$Visit.Week[coreDf$Visit.ID == "W-1 (Day -7 to -1)"] <- "W -1"
+coreDf$Visit.Week[coreDf$Visit.ID == "+/- W40 (Day 281 +/- 4we)" ] <- "W 40"
+coreDf$Visit.Week[coreDf$Visit.ID == "W12 (Day 86) (Panel 3, France only)" ] <- "W 12"
+coreDf$Visit.Week[coreDf$Visit.ID == "+/- FU W24 (Day 169 in FU period +/- 4we)" ] <- "FUW 24"
+coreDf$Visit.Week[coreDf$Visit.ID == "W40 (Day 282) (Panel 3, France only)" ] <- "W 40"
+
+allMerge <- merge(data, coreDf, by=c("Subject.ID", "Visit.Week"))
+allMerge$Date.of.biopsy <- as.Date(allMerge$Date.of.biopsy, origin = "1899-12-30")
+```
+
+# Merge with clinical to get panel info
+
+```{r}
+adef <- haven::read_sas("../data/clinical/adef.sas7bdat")
+adefIk <- unique(adef[,c("USUBJID","APANEL")])
+adefIk$subjectID <- unlist(lapply(strsplit(adefIk$USUBJID, split="-"), "[[", 2))
+
+allMerge$panel <- adefIk$APANEL[match(allMerge$Subject.ID, adefIk$subjectID)]
+
+## clean data frame
+df <- data.frame(patientID=allMerge$Subject.ID,
+                 visit=allMerge$Visit.Week,
+                 visitDate=allMerge$Date.of.biopsy,
+                 panel=allMerge$panel,
+                 nCells=allMerge$total,
+                 nCellsAfterQC=allMerge$total,
+                 cAgPosCells=allMerge$cAgPos,
+                 cAgPosCells_proportion=allMerge$cAgPos/allMerge$total * 100)
+df$visit <- factor(df$visit, levels = c("W -1", "W 40", "FUW 24"))
+
+table(df$visit, df$panel)
+```
+
+# Visualization
+
+Note that plot on log-scale must add a small number to avoid `log(0)=-Inf`.
+We have therefore added $1e-2$.
+
+```{r}
+library(ggplot2)
+theme_set(theme_bw())
+
+ggplot(df, aes(x=visit, y=cAgPosCells_proportion)) +
+  geom_violin() +
+  geom_point(position=position_dodge()) +
+  geom_line(aes(group=patientID)) +
+  facet_wrap(. ~ panel) + 
+  ylab("Proportion of HBcAg+ cells")
+
+
+ggplot(df, aes(x=visit, y=cAgPosCells_proportion)) +
+  geom_violin() +
+  geom_point(position=position_dodge()) +
+  geom_line(aes(group=patientID)) +
+  facet_wrap(. ~ panel) +
+  ylim(c(0,0.75)) + 
+  ylab("Proportion of HBcAg+ cells (ZOOM)")
+
+
+
+ggplot(df, aes(x=visit, y=cAgPosCells_proportion+1e-2)) +
+  geom_violin() +
+  geom_point(position=position_dodge()) +
+  geom_line(aes(group=patientID)) +
+  facet_wrap(. ~ panel) + 
+  ylab("Proportion of HBcAg+ cells") +
+  scale_y_continuous(trans='log', 
+                     breaks=c(1e-2, 0.01, 0.1, 1, 10, 20, 50, 75, 100),
+                     limits=c(1e-2, 100))
+
+
+ggplot(df, aes(x=panel, y=cAgPosCells_proportion+1e-2)) +
+  geom_violin() +
+  geom_point(position=position_dodge()) +
+  geom_line(aes(group=patientID)) +
+  facet_wrap(. ~ visit) + 
+  ylab("Proportion of HBcAg+ cells") +
+  scale_y_continuous(trans='log', 
+                     breaks=c(1e-2, 0.01, 0.1, 1, 10, 20, 50, 75, 100),
+                     limits=c(1e-2, 100))
+
+
+ggplot(df, aes(x=panel, y=cAgPosCells_proportion+1e-2)) +
+  geom_violin() +
+  geom_point(position=position_jitter(width=.2)) +
+  geom_line(aes(group=patientID)) +
+  facet_wrap(. ~ visit) + 
+  ylab("Proportion of HBcAg+ cells") +
+  scale_y_continuous(trans='log', 
+                     breaks=c(1e-2, 0.01, 0.1, 1, 10, 20, 50, 75, 100),
+                     limits=c(1e-2, 100))
+
+
+## without FUW24
+ggplot(df[df$visit %in% c("W -1", "W 40"),], aes(x=panel, y=cAgPosCells_proportion+1e-2)) +
+  geom_violin() +
+  geom_point(position=position_jitter(width=.2)) +
+  geom_line(aes(group=patientID)) +
+  facet_wrap(. ~ visit) + 
+  ylab("Proportion of HBcAg+ cells") +
+  scale_y_continuous(trans='log', 
+                     breaks=c(1e-2, 0.01, 0.1, 1, 10, 20, 50, 75, 100),
+                     limits=c(1e-2, 100))
+```
+
+# Statistical model and inference {.tabset .tabset-pills}
+
+```{r}
+library(glmmTMB)
+df$fracPositive <- df$cAgPosCells_proportion/100
+```
+
+
+## Across both panels
+
+```{r}
+mBB <- glmmTMB(fracPositive ~ visit + patientID,
+                  family = betabinomial(link = "logit"),
+                weights = nCells,
+                data = df)
+summary(mBB)
+sigma(mBB)
+```
+
+
+## Panel 1
+
+```{r}
+dfPanel1 <- df[df$panel == "Panel 1",]
+mBB <- glmmTMB(fracPositive ~ visit + patientID,
+                  family = betabinomial(link = "logit"),
+                weights = nCells,
+                data = dfPanel1)
+summary(mBB)
+sigma(mBB)
+```
+
+## Panel 2
+
+```{r}
+dfPanel2 <- df[df$panel == "Panel 2",]
+mBB <- glmmTMB(fracPositive ~ visit + patientID,
+                  family = betabinomial(link = "logit"),
+                weights = nCells,
+                data = dfPanel2)
+summary(mBB)
+sigma(mBB)
+```
+
+
+# Statistical model and inference on panel effect {.tabset .tabset-pills}
+
+## Baseline
+
+```{r}
+dfBaseline <- df[df$visit == "W -1",]
+mBB <- glmmTMB(fracPositive ~ panel,
+                  family = betabinomial(link = "logit"),
+                weights = nCells,
+                data = dfBaseline)
+summary(mBB)
+sigma(mBB)
+```
+
+## W40
+
+```{r}
+dfW40 <- df[df$visit == "W 40",]
+mBB <- glmmTMB(fracPositive ~ panel,
+                  family = betabinomial(link = "logit"),
+                weights = nCells,
+                data = dfW40)
+summary(mBB)
+sigma(mBB)
+```

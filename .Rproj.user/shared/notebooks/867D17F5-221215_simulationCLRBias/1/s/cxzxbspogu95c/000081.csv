@@ -1,0 +1,4 @@
+"0","boxplot(fit$coefficients[,2] - beta,"
+"0","        ylab=""Difference (estimated-true LFC)"","
+"0","        col=as.numeric(beta==0)+1, pch=16); abline(h=0, col=""red"", lty=2)"
+"0",""

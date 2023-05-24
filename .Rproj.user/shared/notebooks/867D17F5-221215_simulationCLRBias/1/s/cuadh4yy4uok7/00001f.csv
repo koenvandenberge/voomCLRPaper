@@ -1,5 +1,0 @@
-"0","clrMat <- v$E"
-"0","clrBar <- rowMeans(clrMat %*% X %*% solve(crossprod(X)))"
-"0","varClr <- rowMeans(cbind(rowVars(clrMat[,1:P]), rowVars(clrMat[,(P+1):(2*P)])))"
-"0",""
-"0","plot(x=clrBar, y=varClr)"

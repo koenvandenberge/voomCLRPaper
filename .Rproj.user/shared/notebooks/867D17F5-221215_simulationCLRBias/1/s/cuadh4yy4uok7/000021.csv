@@ -1,4 +1,0 @@
-"0","estVar <- ((P-1)/P)^2 * (1/yBar)"
-"0","oo <- order(clrBar)"
-"0","lines(x=clrBar[oo], y=estVar[oo], col=""blue"")"
-"0",""

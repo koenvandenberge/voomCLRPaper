@@ -1,6 +1,0 @@
-"0","X <- model.matrix(~0+group)"
-"0","# mean of group-wise means for each population"
-"0","yBar <- rowMeans(Y %*% X %*% solve(crossprod(X)))"
-"0","varY <- rowMeans(cbind(rowVars(Y[,1:P]), rowVars(Y[,(P+1):(2*P)])))"
-"0",""
-"0","plot(x=yBar, y=varY) ; abline(0,1,col=""orange"", lwd=2)"

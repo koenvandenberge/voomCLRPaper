@@ -1,8 +1,0 @@
-"0",""
-"0",""
-"0",""
-"0","library(cowplot)"
-"0","pMVAll <- plot_grid(pMVCount, pMVCLR, pMVCountLupus, pMVCLRLupus,"
-"0","          labels = letters[2:5])"
-"0","pAll <- plot_grid(pBias, pMVAll, labels=c(letters[1],NULL), ncol=2, rel_widths = c(0.6,1))"
-"0","pAll"

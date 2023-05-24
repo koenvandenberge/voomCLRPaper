@@ -1,3 +1,0 @@
-"0","estVarLupusPoisson <- ((P-1)/P)^2 * (1/yBarLupus)"
-"0","oo <- order(clrBarLupus)"
-"0","lines(x=clrBarLupus[oo], y=estVarLupusPoisson[oo], col=""steelblue"")"

@@ -1,7 +1,0 @@
-"0","library(genefilter)"
-"0","X <- model.matrix(~0+group)"
-"0","# mean of group-wise means for each population"
-"0","yBar <- rowMeans(Y %*% X %*% solve(crossprod(X)))"
-"0","varY <- rowMeans(cbind(rowVars(Y[,1:10]), rowVars(Y[,11:20])))"
-"0",""
-"0","plot(x=yBar, y=varY)"

@@ -1,0 +1,271 @@
+---
+title: "Lupus case study"
+format:
+  html:
+    toc: true
+    toc_float: true
+    html-math-method: katex
+editor: visual
+---
+
+# Import Lupus dataset
+
+```{r}
+library(limma)
+library(voomCLR)
+lupusCountsWide <- readRDS("../data/230705_popCountsWide_cellState_individualBatchID.rds")
+lupusCountMat <- t(as.matrix(lupusCountsWide[,-c(1:10)]))
+lupusMeta <- lupusCountsWide[,1:10]
+
+table(lupusMeta$Sex) # note mainly Female
+table(lupusMeta$Processing_Cohort, lupusMeta$group) 
+
+```
+
+# PCA using Aitchinson's distance
+
+Healthy vs flare seems to show significant changes based on Aitchinson PCA
+
+```{r}
+design <- model.matrix(~group + batch_cov, data=lupusMeta)
+v <- voomCLR(counts = lupusCountMat,
+             design = design,
+             lib.size = NULL,
+             plot = TRUE, 
+             span=.8)
+lupusCLRMat <- v$E
+
+library(scater)
+pc <- calculatePCA(lupusCLRMat,
+                  ncomponents=2,
+                  ntop=11)
+dfPCA <- cbind(data.frame(pc1=pc[,1], pc2=pc[,2]), lupusMeta)
+dfPCA$Age <- as.numeric(dfPCA$Age)
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=group)) +
+  geom_point()
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=batch_cov)) +
+  geom_point()
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=Age)) +
+  geom_point()
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=Sex)) +
+  geom_point()
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=SLE_status)) +
+  geom_point()
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=Processing_Cohort)) +
+  geom_point()
+
+```
+
+# General SLE status
+
+## Differential abundance analysis using voomCLR
+
+```{r}
+patient <- lupusMeta$ind_cov
+design <- model.matrix(~SLE_status + batch_cov, data=lupusMeta)
+v <- voomCLR(counts = lupusCountMat,
+             design = design,
+             lib.size = NULL,
+             plot = TRUE, 
+             span=.8)
+cf <- duplicateCorrelation(v, design, block=patient)
+v <- voomCLR(counts = lupusCountMat,
+             design = design,
+             lib.size = NULL,
+             block = patient,
+             correlation = cf$consensus, 
+             span=.8)
+cf <- duplicateCorrelation(v, design, block=patient)
+fit <- lmFit(v, design,
+             block = patient,
+             correlation = cf$consensus)
+fit <- lmFit(v, design)
+plotBeta(fit)
+fit <- applyBiasCorrection(fit)
+fit <- eBayes(fit)
+tt <- topTable(fit, coef=2, number=Inf) # SLE vs healthy
+tt
+```
+
+## Differential abundance analysis using LinDA
+
+```{r}
+## linda
+library(MicrobiomeStat)
+library(phyloseq)
+lindaRes <- MicrobiomeStat::linda(feature.dat = lupusCountMat, # rows features, cols samples
+                                    meta.dat = as.data.frame(lupusMeta),
+                                    formula = '~SLE_status + batch_cov + (1|ind_cov)',
+                                    feature.dat.type = 'count',
+                                    is.winsor = FALSE,
+                                    zero.handling = 'pseudo-count')
+lindaRes$output$SLE_statusSLE[order(abs(lindaRes$output$SLE_statusSLE$stat), decreasing=TRUE),]
+```
+
+## Differential abundance analysis using NB model
+
+```{r}
+library(glmmTMB)
+resDfNB <- data.frame(population=rownames(lupusCountMat),
+                      diff=rep(NA,nrow(lupusCountMat)),
+                      se=rep(NA,nrow(lupusCountMat)),
+                      pval=rep(NA,nrow(lupusCountMat)))
+for(pp in 1:nrow(lupusCountMat)){
+  curY <- lupusCountMat[pp,]
+  m_p <- glmmTMB(curY ~ -1 + design + (1|patient), 
+                 family=nbinom2(link="log"),
+                 offset = log(colSums(lupusCountMat)))
+  resDfNB[pp,2:4] <- c(summary(m_p)$coef$cond["designSLE_statusSLE",c(1,2,4)])
+}
+resDfNB$padj <- p.adjust(resDfNB$pval, "fdr")
+
+resDfNB[order(abs(resDfNB$pval)),]
+```
+
+```{r}
+logit <- function(x) log(x / (1-x))
+plot(x=logit(tt$P.Value), y=logit(lindaRes$output$SLE_statusSLE[rownames(tt), "pvalue"]),
+     xlab = "voomCLR logit pvalue", ylab="LinDA logit pvalue") ; abline(0,1,col="steelblue")
+
+```
+
+## Compare methods
+
+```{r}
+allPopulations <- rownames(lupusCountMat)
+nPopulations <- nrow(lupusCountMat)
+allMethods <- c("voomCLR", "LinDA", "NBGLM")
+nMethods <- length(allMethods)
+resDfAll <- data.frame(population = rep(allPopulations, nMethods),
+                       method = rep(allMethods, each=nPopulations),
+                       log2FC = c(tt[allPopulations,]$logFC,
+                                      lindaRes$output$SLE_statusSLE[allPopulations,]$log2FoldChange,
+                                      log2(exp(resDfNB$diff))),
+                       padj = c(tt[allPopulations,]$adj.P.Val,
+                                      lindaRes$output$SLE_statusSLE[allPopulations,]$padj,
+                                      log2(exp(resDfNB$padj)))
+                       
+)
+resDfAll$DA <- resDfAll$padj <= 0.05
+
+ggplot(resDfAll, 
+       aes(x=population, y=method, color=log2FC, size=DA)) +
+  geom_point()+
+  facet_grid(~population, scales = "free_x", space = "free")+
+  theme_light()+
+  scale_color_gradient2(low= "blue", mid="gray", high= "red") +
+  theme(axis.text.x = element_text(angle=45, hjust = 1, vjust = 1),
+        strip.text.x = element_text(size=14, angle=90, hjust = 1, vjust = 1))
+
+```
+
+# Flare vs treated
+
+## Differential abundance analysis using voomCLR
+
+```{r}
+patient <- lupusMeta$ind_cov
+design <- model.matrix(~group + batch_cov, data=lupusMeta)
+v <- voomCLR(counts = lupusCountMat,
+             design = design,
+             lib.size = NULL,
+             plot = TRUE)
+cf <- duplicateCorrelation(v, design, block=patient)
+v <- voomCLR(counts = lupusCountMat,
+             design = design,
+             lib.size = NULL,
+             block = patient,
+             correlation = cf$consensus)
+cf <- duplicateCorrelation(v, design, block=patient)
+fit <- lmFit(v, design,
+             block = patient,
+             correlation = cf$consensus)
+fit <- lmFit(v, design)
+plotBeta(fit)
+fit <- applyBiasCorrection(fit)
+fit <- eBayes(fit)
+tt <- topTable(fit, coef=2, number=Inf) # healthy vs flare
+tt
+
+tt <- topTable(fit, coef="groupTreated", number=Inf) # healthy vs flare
+tt
+```
+
+## Differential abundance analysis using LinDA
+
+```{r}
+## linda
+library(MicrobiomeStat)
+library(phyloseq)
+lindaRes <- MicrobiomeStat::linda(feature.dat = lupusCountMat, # rows features, cols samples
+                                    meta.dat = as.data.frame(lupusMeta),
+                                    formula = '~group + batch_cov + (1|ind_cov)',
+                                    feature.dat.type = 'count',
+                                    is.winsor = FALSE,
+                                    zero.handling = 'pseudo-count')
+lindaRes$output$groupTreated[order(abs(lindaRes$output$groupTreated$stat), decreasing=TRUE),]
+```
+
+## Differential abundance analysis using NB model
+
+```{r}
+library(glmmTMB)
+resDfNB <- data.frame(population=rownames(lupusCountMat),
+                      diff=rep(NA,nrow(lupusCountMat)),
+                      se=rep(NA,nrow(lupusCountMat)),
+                      pval=rep(NA,nrow(lupusCountMat)))
+for(pp in 1:nrow(lupusCountMat)){
+  curY <- lupusCountMat[pp,]
+  m_p <- glmmTMB(curY ~ -1 + design + (1|patient), 
+                 family=nbinom2(link="log"),
+                 offset = log(colSums(lupusCountMat)))
+  resDfNB[pp,2:4] <- c(summary(m_p)$coef$cond["designgroupTreated",c(1,2,4)])
+}
+resDfNB$padj <- p.adjust(resDfNB$pval, "fdr")
+
+resDfNB[order(abs(resDfNB$pval)),]
+```
+
+Quite a big difference between limma and linDA for NK dim.
+
+```{r}
+logit <- function(x) log(x / (1-x))
+plot(x=logit(tt$P.Value), y=logit(lindaRes$output$groupTreated[rownames(tt), "pvalue"]),
+     xlab = "voomCLR logit pvalue", ylab="LinDA logit pvalue") ; abline(0,1,col="steelblue")
+
+```
+
+```{r}
+allPopulations <- rownames(lupusCountMat)
+nPopulations <- nrow(lupusCountMat)
+allMethods <- c("voomCLR", "LinDA", "NBGLM")
+nMethods <- length(allMethods)
+resDfAll <- data.frame(population = rep(allPopulations, nMethods),
+                       method = rep(allMethods, each=nPopulations),
+                       log2FC = c(tt[allPopulations,]$logFC,
+                                      lindaRes$output$groupTreated[allPopulations,]$log2FoldChange,
+                                      log2(exp(resDfNB$diff))),
+                       padj = c(tt[allPopulations,]$adj.P.Val,
+                                      lindaRes$output$groupTreated[allPopulations,]$padj,
+                                      log2(exp(resDfNB$padj)))
+                       
+)
+resDfAll$DA <- resDfAll$padj <= 0.05
+
+ggplot(resDfAll, 
+       aes(x=population, y=method, color=log2FC, size=DA)) +
+  geom_point()+
+  facet_grid(~population, scales = "free_x", space = "free")+
+  theme_light()+
+  scale_color_gradient2(low= "blue", mid="gray", high= "red") +
+  theme(axis.text.x = element_text(angle=45, hjust = 1, vjust = 1),
+        strip.text.x = element_text(size=14, angle=90, hjust = 1, vjust = 1))
+
+
+```

@@ -1,0 +1,305 @@
+---
+title: 'Supercentenarians: cell typing'
+author: "Koen Van den Berge"
+date: "2023-11-13"
+output: html_document
+---
+
+```{r}
+library(SingleCellExperiment)
+library(scran)
+library(scater)
+```
+
+```{r}
+sce <- readRDS("../data/SC2018/231113_sceAfterDoubletRemoval.rds")
+rownames(sce) <- rowData(sce)$geneSymbol
+```
+
+```{r}
+# T-cell markers
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="CD3D")
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="CD3E")
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="CD3G")
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="TRAC")
+# B-cell markers
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="MS4A1")
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="CD19")
+# NK cell markers
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="KLRF1")
+# CD14 monocytes
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="CD14")
+# CD16 monocytes
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="FCGR3A")
+# erythrocytes
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="HBA1")
+## three smaller clusters
+## Dendritic cells: no longer present, it seems
+## possibly removed due to doublet calling
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="LILRA4")
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="CLEC4C")
+## MKI67+ proliferating cells: also likely no longer present
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="MKI67")
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="CDK1")
+## megakaryocytes
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="ITGB3")
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="CMTM5")
+```
+
+
+```{r}
+set.seed(464688)
+# Build a shared nearest-neighbor graph from PCA space
+graph <- buildSNNGraph(sce, 
+                       use.dimred = 'PCA')
+
+# Leiden clustering on the SNN graph
+cluster_leiden <- factor(igraph::cluster_leiden(graph = graph,
+                                                 resolution_parameter = 0.008)$membership) 
+nlevels(cluster_leiden)
+colData(sce)$cluster_leiden <- cluster_leiden
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="cluster_leiden") +
+  scale_color_manual(values=dayjob::paletteDiscrete(values=unique(sce$cluster_leiden), set="bear"))
+ggsave("../plots/231115_umapSuperCentenarians_firstclsutering.pdf", width=12, height=12)
+
+## annotate
+cellTypeLabels <- rep(NA, length=length(cluster_leiden))
+cellTypeLabels[cluster_leiden ==1] <- "NK"
+cellTypeLabels[cluster_leiden ==2] <- "T-cell"
+cellTypeLabels[cluster_leiden ==3] <- "CD14 Monocyte"
+cellTypeLabels[cluster_leiden ==4] <- "CD16 Monocyte"
+cellTypeLabels[cluster_leiden ==5] <- "T-cell"
+cellTypeLabels[cluster_leiden ==6] <- "B-cell"
+cellTypeLabels[cluster_leiden ==7] <- "CD14 Monocyte"
+cellTypeLabels[cluster_leiden ==8] <- "T-cell"
+cellTypeLabels[cluster_leiden ==9] <- "unassigned"
+cellTypeLabels[cluster_leiden ==10] <- "unassigned"
+cellTypeLabels[cluster_leiden ==11] <- "Megakaryocyte"
+cellTypeLabels[cluster_leiden ==12] <- "Erythrocyte"
+cellTypeLabels[cluster_leiden ==13] <- "unassigned" # only one cell
+
+
+sce$cellType <- cellTypeLabels
+sce <- sce[,!sce$cellType == "unassigned"]
+
+saveRDS(sce, file="../data/SC2018/231115_sceAfterCellTypeAnnotation.rds")
+
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="cellType") +
+  scale_color_manual(values=dayjob::paletteDiscrete(values=unique(sce$cellType), set="bear"))
+
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=2/3, 
+               colour_by="cellType") +
+  scale_color_manual(values=dayjob::paletteDiscrete(values=unique(sce$cellType), set="bear")) +
+  labs(colour="Cell type")
+```
+
+# Differential abundance on cell type level
+
+```{r}
+library(dayjob)
+cellCountsLong <- getCellPopulationCounts(sce,
+                                        patientVar = "sample",
+                                        cellTypeVar = "cellType",
+                                        group = "condition",
+                                        format="long")
+cellCountsWide <- getCellPopulationCounts(sce,
+                                        patientVar = "sample",
+                                        cellTypeVar = "cellType",
+                                        group = "condition",
+                                        format="wide")
+countMatrix <- cellCountsWide[,-c(1:2)]
+countMatrix <- t(as.matrix(countMatrix))
+
+
+cellCountsLong <- cellCountsLong %>% 
+  group_by(patient, group) %>%
+  mutate(totalCells = sum(nCells),
+         nCellTypes = n(),
+         geoMean = prod(nCells+1)^(1/nCellTypes),
+         CLR = log((nCells+1) / geoMean )) %>%
+  ungroup() %>%
+  mutate(fractionCells = nCells / totalCells)
+
+ggplot(cellCountsLong, aes(x=celltype, y=fractionCells, fill=group)) +
+  geom_boxplot(outlier.size = 0) +
+  geom_point(position = position_dodge(width = .75)) +
+  theme_classic()
+
+ggplot(cellCountsLong, aes(x=celltype, y=CLR, fill=group)) +
+  geom_boxplot(outlier.size = 0) +
+  geom_point(position = position_dodge(width = .75)) +
+  theme_classic()
+```
+
+
+## voomCLR
+
+```{r}
+library(limma)
+library(voomCLR)
+design <- model.matrix( ~ group, data=cellCountsWide)
+v <- voomCLR(counts = countMatrix,
+             design = design)
+fit <- lmFit(v, design)
+plotBeta(fit)
+fit <- applyBiasCorrection(fit)
+fit <- eBayes(fit)
+tt <- topTable(fit, coef=2, n=Inf)
+tt
+```
+
+
+
+## NB-GLM
+
+```{r}
+library(glmmTMB)
+resDfNB <- data.frame(population=rownames(countMatrix),
+                      diff=rep(NA,nrow(countMatrix)),
+                      se=rep(NA,nrow(countMatrix)),
+                      pval=rep(NA,nrow(countMatrix)))
+for(pp in 1:nrow(countMatrix)){
+  curY <- countMatrix[pp,]
+  m_p <- glmmTMB(curY ~ -1 + design, 
+                 family=nbinom2(link="log"),
+                 offset = log(colSums(countMatrix)))
+  resDfNB[pp,2:4] <- c(summary(m_p)$coef$cond["designgroupSC",c(1,2,4)])
+}
+resDfNB$padj <- p.adjust(resDfNB$pval, "fdr")
+
+resDfNB[order(abs(resDfNB$pval)),]
+```
+
+
+## edgeR
+
+```{r}
+library(edgeR)
+d <- DGEList(countMatrix)
+d <- calcNormFactors(d)
+d <- estimateDisp(d, design)
+fit <- glmFit(d, design)
+lrt <- glmLRT(fit, coef=2)
+lrt$table$padj <- p.adjust(lrt$table$PValue, method="BH")
+lrt$table[order(lrt$table$LR, decreasing=TRUE),]
+```
+
+## LinDA
+
+```{r}
+library(MicrobiomeStat)
+library(phyloseq)
+lindaRes <- LinDA::linda(otu.tab = countMatrix, # rows features, cols samples
+                                    meta = as.data.frame(cellCountsWide),
+                                    formula = '~ group',
+                                    type = 'count',
+                                   adaptive=TRUE,
+                                   imputation = FALSE)
+
+lindaRes$output$groupSC[order(abs(lindaRes$output$groupSC$stat), decreasing=TRUE),]
+```
+
+# Summary of results
+
+```{r}
+allPopulations <- rownames(countMatrix)
+nPopulations <- nrow(countMatrix)
+allMethods <- c("voomCLR", "LinDA", "edgeR", "NBGLM")
+nMethods <- length(allMethods)
+resDfAll <- data.frame(population = rep(allPopulations, nMethods),
+                       method = rep(allMethods, each=nPopulations),
+                       log2FC = c(tt[allPopulations,]$logFC,
+                                  lindaRes$output$groupSC[allPopulations,]$log2FoldChange,
+                                  lrt$table[allPopulations,]$logFC,
+                                  log2(exp(resDfNB$diff))),
+                       padj = c(tt[allPopulations,]$adj.P.Val,
+                                lindaRes$output$groupSC[allPopulations,]$padj,
+                                lrt$table[allPopulations,]$padj,
+                                resDfNB$padj)
+                       
+)
+resDfAll$DA <- resDfAll$padj <= 0.05
+
+pComp <- ggplot(resDfAll, 
+       aes(x=population, y=method, color=log2FC, size=DA)) +
+  geom_point()+
+  facet_grid(~population, scales = "free_x", space = "free")+
+  theme_light()+
+  scale_color_gradient2(low= "blue", mid="gray", high= "red") +
+  theme(axis.text.x = element_text(angle=45, hjust = 1, vjust = 1),
+        strip.text.x = element_text(size=14, angle=90, hjust = 1, vjust = 1))
+pComp
+
+
+
+resDfAll$DA <- resDfAll$padj <= 0.06 # to show NB models are also at adjusted p-value around .05
+
+pComp <- ggplot(resDfAll, 
+       aes(x=population, y=method, color=log2FC, size=DA)) +
+  geom_point()+
+  facet_grid(~population, scales = "free_x", space = "free")+
+  theme_light()+
+  scale_color_gradient2(low= "blue", mid="gray", high= "red") +
+  theme(axis.text.x = element_text(angle=45, hjust = 1, vjust = 1),
+        strip.text.x = element_text(size=14, angle=90, hjust = 1, vjust = 1))
+pComp
+```
+
+
+

@@ -1,0 +1,256 @@
+---
+title: "Supercentenarians case study"
+format:
+  html:
+    toc: true
+    toc_float: true
+    html-math-method: katex
+editor: visual
+---
+
+In this document, we reanalyze the scRNA-seq data from [Hashimoto et al. (2019)](https://www.pnas.org/doi/full/10.1073/pnas.1907883116): "*Single-cell transcriptomics reveals expansion of cytotoxic CD4 T cells in supercentenarians*".
+
+```{r}
+library(limma)
+library(voomCLR)
+library(SingleCellExperiment)
+library(scater)
+library(scuttle)
+library(scran)
+```
+
+```{r, eval=FALSE}
+#| eval: false
+counts <- read.table("../data/SC2018/01.UMI.txt.gz")
+countMatrix <- as.matrix(counts)
+sce <- SingleCellExperiment(assays = list("counts" = countMatrix),
+                            colData = DataFrame(barcode = colnames(countMatrix)),
+                            rowData = DataFrame(ensemblid = rownames(countMatrix)))
+
+## convert gene annotation
+library(org.Hs.eg.db)
+cols <- c("SYMBOL", "GENENAME")
+geneConversionDf <- select(org.Hs.eg.db, keys=rownames(countMatrix), columns=cols, keytype="ENSEMBL")
+geneConversionDf <- geneConversionDf[!is.na(geneConversionDf$SYMBOL),]
+sce <- sce[rownames(sce) %in% geneConversionDf$ENSEMBL,]
+rowData(sce)$geneSymbol <- geneConversionDf$SYMBOL[match(rowData(sce)$ensemblid, geneConversionDf$ENSEMBL)]
+rowData(sce)$geneName <- geneConversionDf$GENENAME[match(rowData(sce)$ensemblid, geneConversionDf$ENSEMBL)]
+
+## add sample IDs
+cellBC <- read.table("../data/SC2018/03.Cell.Barcodes.txt.gz")
+rownames(cellBC) <- colnames(sce)
+colnames(cellBC) <- c("barcode", "sample", "condition")
+cellBC$barcode <- gsub(x=cellBC$barcode, pattern="-", replacement=".", fixed=TRUE)
+colData(sce) <- as(cellBC, "DataFrame")
+
+saveRDS(sce, file="../data/SC2018/231017_sceObject.rds")
+```
+
+```{r}
+sce <- readRDS("../data/SC2018/231017_sceObject.rds")
+```
+
+# Preprocessing and exploratory data analysis workflow
+
+## Filtering non-informative genes
+
+```{r}
+# remove all genes that are expressed in less than 50 cells
+keep <- rowSums(assays(sce)$counts > 0) > 49
+table(keep)
+
+sce <- sce[keep,]
+```
+
+## QC
+
+```{r, message=FALSE, warning=FALSE}
+# check ERCC spike-in transcripts
+sum(grepl("^ERCC-", rownames(sce))) # no spike-in transcripts available
+
+# check mitochondrial genes: none present?
+grep(pattern="^MT", x=rowData(sce)$geneSymbol, value=TRUE)
+
+## calculate QC metrics
+df <- perCellQCMetrics(sce)
+head(df)
+
+# add QC variables to sce object
+colData(sce) <- cbind(colData(sce), df)
+```
+
+## Data-driven QC
+
+```{r}
+lowLib <- isOutlier(df$sum, type="lower", log=TRUE)
+lowFeatures <- isOutlier(df$detected, type="lower", log=TRUE)
+
+table(lowLib)
+table(lowFeatures)
+
+discardCells <- (lowLib | lowFeatures)
+table(discardCells) # we will remove ~23K cells, resulting in a set of ~49K cells in total.
+colData(sce)$discardCells <- discardCells
+
+
+# Number of genes vs library size
+plotColData(sce, x = "sum", y="detected", colour_by="discardCells") 
+
+sce <- sce[, !discardCells]
+sce
+```
+
+## Normalization
+
+```{r}
+sce <- logNormCounts(sce)
+sf <- librarySizeFactors(sce)
+plot(x= log(colSums(assays(sce)$counts)), 
+     y=sf, pch=16, cex=1/2) ; abline(h=1, col="red")
+```
+
+## Feature selection
+
+```{r}
+dec <- modelGeneVar(sce)
+head(dec)
+fitHBV <- metadata(dec)
+
+# get 10% most variable genes
+hvg <- getTopHVGs(dec, 
+                  prop=0.1)
+head(hvg)
+
+# plot these 
+plot(fitHBV$mean, fitHBV$var, 
+     col = c("orange", "darkseagreen3")[(names(fitHBV$mean) %in% hvg)+1],
+     xlab="Mean of log-expression",
+    ylab="Variance of log-expression")
+curve(fitHBV$trend(x), col="dodgerblue", add=TRUE, lwd=2)
+legend("topleft", 
+       legend = c("Selected", "Not selected"), 
+       col = c("darkseagreen3", "orange"),
+       pch = 16,
+       bty='n')
+```
+
+## PCA with feature selection
+
+```{r}
+set.seed(1234)
+sce <- runPCA(sce, 
+              ncomponents=30, 
+              subset_row=hvg)
+sce$logLibSize <- log(sce$sum)
+
+plotPCA(sce, 
+        colour_by = "sample")
+plotPCA(sce, 
+        colour_by = "condition")
+plotPCA(sce, 
+        colour_by = "logLibSize")
+
+
+percent.var <- attr(reducedDim(sce), "percentVar")
+plot(percent.var, log="y", xlab="PC", ylab="Variance explained (%)")
+plot(cumsum(percent.var), xlab="PC", ylab="Cumulative variance explained (%)")
+```
+
+## UMAP on PCs
+
+We observe sample effects on the UMAP.
+
+```{r}
+# Using top 10% highly variable genes and top 16 PCs
+sce <- runUMAP(sce, 
+               dimred = 'PCA', 
+               external_neighbors = TRUE,
+               ncomponents = 16,
+               min_dist=0.4)
+scramble <- sample(ncol(sce))
+plotUMAP(sce[,scramble],
+         colour_by = "sample",
+         point_size=1/2)
+plotUMAP(sce[,scramble],
+         colour_by = "condition",
+         point_size=1/2)
+plotUMAP(sce, 
+        colour_by = "logLibSize",
+        point_size=1/2)
+
+```
+
+## Sample integration using fastMNN
+
+```{r, eval=FALSE}
+set.seed(124)
+scePC <- batchelor::multiBatchNorm(sce, batch = sce$sample)
+scePC <- batchelor::fastMNN(scePC, batch = sce$sample)
+scePC <- runUMAP(scePC, 
+               dimred="corrected",
+               name="UMAP_fastMNNCorrected")
+plotReducedDim(scePC, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="batch")
+reducedDims(sce)$UMAP_fastMNNCorrected <- reducedDims(scePC)$UMAP_fastMNNCorrected
+saveRDS(sce, file="../data/SC2018/231020_sceAfterMNN.rds")
+```
+
+```{r}
+sce <- readRDS("../data/SC2018/231020_sceAfterMNN.rds")
+plotReducedDim(sce[,scramble], 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="sample")
+plotReducedDim(sce[,scramble], 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="condition") 
+plotReducedDim(sce[,scramble], 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="logLibSize")
+```
+
+## Doublet identification and removal
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+## perform doublet detection
+library(scDblFinder)
+
+set.seed(211103)
+sce <- scDblFinder(sce, 
+                   returnType="table",
+                   samples = sce$sample)
+table(sce$scDblFinder.class)
+
+boxplot(log1p(sce$scDblFinder.score) ~ sce$sample)
+tab <- table(sce$scDblFinder.class, sce$sample, 
+      exclude=NULL)
+
+barplot(t(t(tab) / colSums(tab))[2,],
+        xlab = "Cluster", ylab = "Fraction of doublets")
+
+plotUMAP(sce, 
+        colour_by = "scDblFinder.class")
+plotReducedDim(sce[,scramble], 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="scDblFinder.class")
+
+sce <- sce[,!sce$scDblFinder.class == "doublet"]
+
+```
+
+# Save file for further analysis
+
+```{r}
+saveRDS(sce, file="../data/SC2018/231113_sceAfterDoubletRemoval.rds")
+```
+
+# Session info
+
+```{r}
+sessionInfo()
+```

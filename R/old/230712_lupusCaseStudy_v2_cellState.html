@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.475">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Lupus case study: cell state analysis</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="230712_lupusCaseStudy_v2_cellState_files/libs/clipboard/clipboard.min.js"></script>
+<script src="230712_lupusCaseStudy_v2_cellState_files/libs/quarto-html/quarto.js"></script>
+<script src="230712_lupusCaseStudy_v2_cellState_files/libs/quarto-html/popper.min.js"></script>
+<script src="230712_lupusCaseStudy_v2_cellState_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="230712_lupusCaseStudy_v2_cellState_files/libs/quarto-html/anchor.min.js"></script>
+<link href="230712_lupusCaseStudy_v2_cellState_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="230712_lupusCaseStudy_v2_cellState_files/libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="230712_lupusCaseStudy_v2_cellState_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="230712_lupusCaseStudy_v2_cellState_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="230712_lupusCaseStudy_v2_cellState_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+
+
+</head>
+
+<body>
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+<div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+  <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#import-lupus-dataset" id="toc-import-lupus-dataset" class="nav-link active" data-scroll-target="#import-lupus-dataset">Import Lupus dataset</a></li>
+  <li><a href="#pca-using-aitchinsons-distance" id="toc-pca-using-aitchinsons-distance" class="nav-link" data-scroll-target="#pca-using-aitchinsons-distance">PCA using Aitchinson’s distance</a>
+  <ul class="collapse">
+  <li><a href="#asian-ancestry" id="toc-asian-ancestry" class="nav-link" data-scroll-target="#asian-ancestry">Asian ancestry</a></li>
+  <li><a href="#european-ancestry" id="toc-european-ancestry" class="nav-link" data-scroll-target="#european-ancestry">European ancestry</a></li>
+  </ul></li>
+  <li><a href="#general-sle-status" id="toc-general-sle-status" class="nav-link" data-scroll-target="#general-sle-status">General SLE status</a>
+  <ul class="collapse">
+  <li><a href="#asian-ancestry-1" id="toc-asian-ancestry-1" class="nav-link" data-scroll-target="#asian-ancestry-1">Asian ancestry</a>
+  <ul class="collapse">
+  <li><a href="#voomclr" id="toc-voomclr" class="nav-link" data-scroll-target="#voomclr">voomCLR</a></li>
+  <li><a href="#differential-abundance-analysis-using-linda" id="toc-differential-abundance-analysis-using-linda" class="nav-link" data-scroll-target="#differential-abundance-analysis-using-linda">Differential abundance analysis using LinDA</a></li>
+  <li><a href="#differential-abundance-analysis-using-nb-model" id="toc-differential-abundance-analysis-using-nb-model" class="nav-link" data-scroll-target="#differential-abundance-analysis-using-nb-model">Differential abundance analysis using NB model</a></li>
+  <li><a href="#compare-methods" id="toc-compare-methods" class="nav-link" data-scroll-target="#compare-methods">Compare methods</a></li>
+  </ul></li>
+  <li><a href="#european-ancestry-1" id="toc-european-ancestry-1" class="nav-link" data-scroll-target="#european-ancestry-1">European ancestry</a>
+  <ul class="collapse">
+  <li><a href="#voomclr-1" id="toc-voomclr-1" class="nav-link" data-scroll-target="#voomclr-1">voomCLR</a></li>
+  <li><a href="#differential-abundance-analysis-using-linda-1" id="toc-differential-abundance-analysis-using-linda-1" class="nav-link" data-scroll-target="#differential-abundance-analysis-using-linda-1">Differential abundance analysis using LinDA</a></li>
+  <li><a href="#differential-abundance-analysis-using-nb-model-1" id="toc-differential-abundance-analysis-using-nb-model-1" class="nav-link" data-scroll-target="#differential-abundance-analysis-using-nb-model-1">Differential abundance analysis using NB model</a></li>
+  <li><a href="#compare-methods-1" id="toc-compare-methods-1" class="nav-link" data-scroll-target="#compare-methods-1">Compare methods</a></li>
+  </ul></li>
+  </ul></li>
+  <li><a href="#visualization" id="toc-visualization" class="nav-link" data-scroll-target="#visualization">Visualization</a>
+  <ul class="collapse">
+  <li><a href="#fraction" id="toc-fraction" class="nav-link" data-scroll-target="#fraction">Fraction</a>
+  <ul class="collapse">
+  <li><a href="#both-ancestries" id="toc-both-ancestries" class="nav-link" data-scroll-target="#both-ancestries">Both ancestries</a></li>
+  <li><a href="#asian" id="toc-asian" class="nav-link" data-scroll-target="#asian">Asian</a></li>
+  <li><a href="#european" id="toc-european" class="nav-link" data-scroll-target="#european">European</a></li>
+  </ul></li>
+  <li><a href="#clr" id="toc-clr" class="nav-link" data-scroll-target="#clr">CLR</a>
+  <ul class="collapse">
+  <li><a href="#both-ancestries-1" id="toc-both-ancestries-1" class="nav-link" data-scroll-target="#both-ancestries-1">Both ancestries</a></li>
+  <li><a href="#asian-1" id="toc-asian-1" class="nav-link" data-scroll-target="#asian-1">Asian</a></li>
+  <li><a href="#european-1" id="toc-european-1" class="nav-link" data-scroll-target="#european-1">European</a></li>
+  </ul></li>
+  </ul></li>
+  </ul>
+</nav>
+</div>
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Lupus case study: cell state analysis</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="import-lupus-dataset" class="level1">
+<h1>Import Lupus dataset</h1>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(limma)</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(voomCLR)</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>lupusCountsWide <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="st">"../data/230705_popCountsWide_cellState_individualBatchID.rds"</span>)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>lupusCountsWide <span class="ot">&lt;-</span> lupusCountsWide[,<span class="sc">!</span><span class="fu">colnames</span>(lupusCountsWide) <span class="sc">==</span> <span class="st">"NA"</span>]</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">table</span>(lupusCountsWide<span class="sc">$</span>pop_cov) <span class="co"># paper looks at Asians and Europeans separately.</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+African American            Asian         European         Hispanic 
+               4              137              211                3 </code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="do">## Asian data</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>lupusCountsWideAsian <span class="ot">&lt;-</span> lupusCountsWide[lupusCountsWide<span class="sc">$</span>pop_cov <span class="sc">==</span> <span class="st">"Asian"</span>,]</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>lupusCountMatAsian <span class="ot">&lt;-</span> <span class="fu">t</span>(<span class="fu">as.matrix</span>(lupusCountsWideAsian[,<span class="sc">-</span><span class="fu">c</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>)]))</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>lupusMetaAsian <span class="ot">&lt;-</span> lupusCountsWideAsian[,<span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>]</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="do">## European data</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>lupusCountsWideEuropean <span class="ot">&lt;-</span> lupusCountsWide[lupusCountsWide<span class="sc">$</span>pop_cov <span class="sc">==</span> <span class="st">"European"</span>,]</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>lupusCountMatEuropean <span class="ot">&lt;-</span> <span class="fu">t</span>(<span class="fu">as.matrix</span>(lupusCountsWideEuropean[,<span class="sc">-</span><span class="fu">c</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>)]))</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>lupusMetaEuropean <span class="ot">&lt;-</span> lupusCountsWideEuropean[,<span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="pca-using-aitchinsons-distance" class="level1">
+<h1>PCA using Aitchinson’s distance</h1>
+<section id="asian-ancestry" class="level2">
+<h2 class="anchored" data-anchor-id="asian-ancestry">Asian ancestry</h2>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>designAsian <span class="ot">&lt;-</span> <span class="fu">model.matrix</span>(<span class="sc">~</span>SLE_status <span class="sc">+</span> Processing_Cohort, <span class="at">data=</span>lupusMetaAsian)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>v <span class="ot">&lt;-</span> <span class="fu">voomCLR</span>(<span class="at">counts =</span> lupusCountMatAsian,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>             <span class="at">design =</span> designAsian,</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>             <span class="at">lib.size =</span> <span class="cn">NULL</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">plot =</span> <span class="cn">TRUE</span>, </span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>             <span class="at">span=</span>.<span class="dv">8</span>)</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>lupusCLRMatAsian <span class="ot">&lt;-</span> v<span class="sc">$</span>E</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(scater)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Loading required package: SingleCellExperiment</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Loading required package: SummarizedExperiment</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Loading required package: MatrixGenerics</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Loading required package: matrixStats</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+Attaching package: 'MatrixGenerics'</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following objects are masked from 'package:matrixStats':
+
+    colAlls, colAnyNAs, colAnys, colAvgsPerRowSet, colCollapse,
+    colCounts, colCummaxs, colCummins, colCumprods, colCumsums,
+    colDiffs, colIQRDiffs, colIQRs, colLogSumExps, colMadDiffs,
+    colMads, colMaxs, colMeans2, colMedians, colMins, colOrderStats,
+    colProds, colQuantiles, colRanges, colRanks, colSdDiffs, colSds,
+    colSums2, colTabulates, colVarDiffs, colVars, colWeightedMads,
+    colWeightedMeans, colWeightedMedians, colWeightedSds,
+    colWeightedVars, rowAlls, rowAnyNAs, rowAnys, rowAvgsPerColSet,
+    rowCollapse, rowCounts, rowCummaxs, rowCummins, rowCumprods,
+    rowCumsums, rowDiffs, rowIQRDiffs, rowIQRs, rowLogSumExps,
+    rowMadDiffs, rowMads, rowMaxs, rowMeans2, rowMedians, rowMins,
+    rowOrderStats, rowProds, rowQuantiles, rowRanges, rowRanks,
+    rowSdDiffs, rowSds, rowSums2, rowTabulates, rowVarDiffs, rowVars,
+    rowWeightedMads, rowWeightedMeans, rowWeightedMedians,
+    rowWeightedSds, rowWeightedVars</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Loading required package: GenomicRanges</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Loading required package: stats4</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Loading required package: BiocGenerics</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+Attaching package: 'BiocGenerics'</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following object is masked from 'package:limma':
+
+    plotMA</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following objects are masked from 'package:stats':
+
+    IQR, mad, sd, var, xtabs</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following objects are masked from 'package:base':
+
+    anyDuplicated, append, as.data.frame, basename, cbind, colnames,
+    dirname, do.call, duplicated, eval, evalq, Filter, Find, get, grep,
+    grepl, intersect, is.unsorted, lapply, Map, mapply, match, mget,
+    order, paste, pmax, pmax.int, pmin, pmin.int, Position, rank,
+    rbind, Reduce, rownames, sapply, setdiff, sort, table, tapply,
+    union, unique, unsplit, which.max, which.min</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Loading required package: S4Vectors</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+Attaching package: 'S4Vectors'</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following objects are masked from 'package:base':
+
+    expand.grid, I, unname</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Loading required package: IRanges</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Loading required package: GenomeInfoDb</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Loading required package: Biobase</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Welcome to Bioconductor
+
+    Vignettes contain introductory material; view with
+    'browseVignettes()'. To cite Bioconductor, see
+    'citation("Biobase")', and for packages 'citation("pkgname")'.</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+Attaching package: 'Biobase'</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following object is masked from 'package:MatrixGenerics':
+
+    rowMedians</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following objects are masked from 'package:matrixStats':
+
+    anyMissing, rowMedians</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Loading required package: scuttle</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Loading required package: ggplot2</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+Attaching package: 'scater'</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following object is masked from 'package:limma':
+
+    plotMDS</code></pre>
+</div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-2-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>pc <span class="ot">&lt;-</span> <span class="fu">calculatePCA</span>(lupusCLRMatAsian,</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>                  <span class="at">ncomponents=</span><span class="dv">2</span>,</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>                  <span class="at">ntop=</span><span class="dv">11</span>)</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>dfPCA <span class="ot">&lt;-</span> <span class="fu">cbind</span>(<span class="fu">data.frame</span>(<span class="at">pc1=</span>pc[,<span class="dv">1</span>], <span class="at">pc2=</span>pc[,<span class="dv">2</span>]), lupusMetaAsian)</span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a>dfPCA<span class="sc">$</span>Age <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(dfPCA<span class="sc">$</span>Age)</span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(dfPCA, <span class="fu">aes</span>(<span class="at">x=</span>pc1, <span class="at">y=</span>pc2, <span class="at">col=</span>group)) <span class="sc">+</span></span>
+<span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-2-2.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(dfPCA, <span class="fu">aes</span>(<span class="at">x=</span>pc1, <span class="at">y=</span>pc2, <span class="at">col=</span>batch_cov)) <span class="sc">+</span></span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-2-3.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(dfPCA, <span class="fu">aes</span>(<span class="at">x=</span>pc1, <span class="at">y=</span>pc2, <span class="at">col=</span>Age)) <span class="sc">+</span></span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-2-4.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(dfPCA, <span class="fu">aes</span>(<span class="at">x=</span>pc1, <span class="at">y=</span>pc2, <span class="at">col=</span>Sex)) <span class="sc">+</span></span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-2-5.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(dfPCA, <span class="fu">aes</span>(<span class="at">x=</span>pc1, <span class="at">y=</span>pc2, <span class="at">col=</span>SLE_status)) <span class="sc">+</span></span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-2-6.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb37"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(dfPCA, <span class="fu">aes</span>(<span class="at">x=</span>pc1, <span class="at">y=</span>pc2, <span class="at">col=</span>Processing_Cohort)) <span class="sc">+</span></span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-2-7.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+<section id="european-ancestry" class="level2">
+<h2 class="anchored" data-anchor-id="european-ancestry">European ancestry</h2>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>designEuropean <span class="ot">&lt;-</span> <span class="fu">model.matrix</span>(<span class="sc">~</span>SLE_status <span class="sc">+</span> Processing_Cohort, <span class="at">data=</span>lupusMetaEuropean)</span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>v <span class="ot">&lt;-</span> <span class="fu">voomCLR</span>(<span class="at">counts =</span> lupusCountMatEuropean,</span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>             <span class="at">design =</span> designEuropean,</span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a>             <span class="at">lib.size =</span> <span class="cn">NULL</span>,</span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">plot =</span> <span class="cn">TRUE</span>, </span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a>             <span class="at">span=</span>.<span class="dv">8</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-3-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb39"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>lupusCLRMatEuropean <span class="ot">&lt;-</span> v<span class="sc">$</span>E</span>
+<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(scater)</span>
+<span id="cb39-4"><a href="#cb39-4" aria-hidden="true" tabindex="-1"></a>pc <span class="ot">&lt;-</span> <span class="fu">calculatePCA</span>(lupusCLRMatEuropean,</span>
+<span id="cb39-5"><a href="#cb39-5" aria-hidden="true" tabindex="-1"></a>                  <span class="at">ncomponents=</span><span class="dv">2</span>,</span>
+<span id="cb39-6"><a href="#cb39-6" aria-hidden="true" tabindex="-1"></a>                  <span class="at">ntop=</span><span class="dv">11</span>)</span>
+<span id="cb39-7"><a href="#cb39-7" aria-hidden="true" tabindex="-1"></a>dfPCA <span class="ot">&lt;-</span> <span class="fu">cbind</span>(<span class="fu">data.frame</span>(<span class="at">pc1=</span>pc[,<span class="dv">1</span>], <span class="at">pc2=</span>pc[,<span class="dv">2</span>]), lupusMetaEuropean)</span>
+<span id="cb39-8"><a href="#cb39-8" aria-hidden="true" tabindex="-1"></a>dfPCA<span class="sc">$</span>Age <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(dfPCA<span class="sc">$</span>Age)</span>
+<span id="cb39-9"><a href="#cb39-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb39-10"><a href="#cb39-10" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(dfPCA, <span class="fu">aes</span>(<span class="at">x=</span>pc1, <span class="at">y=</span>pc2, <span class="at">col=</span>group)) <span class="sc">+</span></span>
+<span id="cb39-11"><a href="#cb39-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-3-2.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb40"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(dfPCA, <span class="fu">aes</span>(<span class="at">x=</span>pc1, <span class="at">y=</span>pc2, <span class="at">col=</span>batch_cov)) <span class="sc">+</span></span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-3-3.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb41"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(dfPCA, <span class="fu">aes</span>(<span class="at">x=</span>pc1, <span class="at">y=</span>pc2, <span class="at">col=</span>Age)) <span class="sc">+</span></span>
+<span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-3-4.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(dfPCA, <span class="fu">aes</span>(<span class="at">x=</span>pc1, <span class="at">y=</span>pc2, <span class="at">col=</span>Sex)) <span class="sc">+</span></span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-3-5.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb43"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(dfPCA, <span class="fu">aes</span>(<span class="at">x=</span>pc1, <span class="at">y=</span>pc2, <span class="at">col=</span>SLE_status)) <span class="sc">+</span></span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-3-6.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(dfPCA, <span class="fu">aes</span>(<span class="at">x=</span>pc1, <span class="at">y=</span>pc2, <span class="at">col=</span>Processing_Cohort)) <span class="sc">+</span></span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-3-7.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+</section>
+<section id="general-sle-status" class="level1">
+<h1>General SLE status</h1>
+<section id="asian-ancestry-1" class="level2">
+<h2 class="anchored" data-anchor-id="asian-ancestry-1">Asian ancestry</h2>
+<section id="voomclr" class="level3">
+<h3 class="anchored" data-anchor-id="voomclr">voomCLR</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb45"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>patientAsian <span class="ot">&lt;-</span> lupusMetaAsian<span class="sc">$</span>ind_cov</span>
+<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>designAsian <span class="ot">&lt;-</span> <span class="fu">model.matrix</span>(<span class="sc">~</span>SLE_status <span class="sc">+</span> Processing_Cohort, <span class="at">data=</span>lupusMetaAsian)</span>
+<span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a>v <span class="ot">&lt;-</span> <span class="fu">voomCLR</span>(<span class="at">counts =</span> lupusCountMatAsian,</span>
+<span id="cb45-4"><a href="#cb45-4" aria-hidden="true" tabindex="-1"></a>             <span class="at">design =</span> designAsian,</span>
+<span id="cb45-5"><a href="#cb45-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">lib.size =</span> <span class="cn">NULL</span>,</span>
+<span id="cb45-6"><a href="#cb45-6" aria-hidden="true" tabindex="-1"></a>             <span class="at">plot =</span> <span class="cn">TRUE</span>, </span>
+<span id="cb45-7"><a href="#cb45-7" aria-hidden="true" tabindex="-1"></a>             <span class="at">span=</span>.<span class="dv">8</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-4-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb46"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a>cf <span class="ot">&lt;-</span> <span class="fu">duplicateCorrelation</span>(v, designAsian, <span class="at">block=</span>patientAsian)</span>
+<span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a>v <span class="ot">&lt;-</span> <span class="fu">voomCLR</span>(<span class="at">counts =</span> lupusCountMatAsian,</span>
+<span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a>             <span class="at">design =</span> designAsian,</span>
+<span id="cb46-4"><a href="#cb46-4" aria-hidden="true" tabindex="-1"></a>             <span class="at">lib.size =</span> <span class="cn">NULL</span>,</span>
+<span id="cb46-5"><a href="#cb46-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">block =</span> patientAsian,</span>
+<span id="cb46-6"><a href="#cb46-6" aria-hidden="true" tabindex="-1"></a>             <span class="at">correlation =</span> cf<span class="sc">$</span>consensus, </span>
+<span id="cb46-7"><a href="#cb46-7" aria-hidden="true" tabindex="-1"></a>             <span class="at">span=</span>.<span class="dv">8</span>)</span>
+<span id="cb46-8"><a href="#cb46-8" aria-hidden="true" tabindex="-1"></a>cf <span class="ot">&lt;-</span> <span class="fu">duplicateCorrelation</span>(v, designAsian, <span class="at">block=</span>patientAsian)</span>
+<span id="cb46-9"><a href="#cb46-9" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">lmFit</span>(v, designAsian,</span>
+<span id="cb46-10"><a href="#cb46-10" aria-hidden="true" tabindex="-1"></a>             <span class="at">block =</span> patientAsian,</span>
+<span id="cb46-11"><a href="#cb46-11" aria-hidden="true" tabindex="-1"></a>             <span class="at">correlation =</span> cf<span class="sc">$</span>consensus)</span>
+<span id="cb46-12"><a href="#cb46-12" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">lmFit</span>(v, designAsian)</span>
+<span id="cb46-13"><a href="#cb46-13" aria-hidden="true" tabindex="-1"></a><span class="fu">plotBeta</span>(fit)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-4-2.png" class="img-fluid" width="672"></p>
+</div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-4-3.png" class="img-fluid" width="672"></p>
+</div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-4-4.png" class="img-fluid" width="672"></p>
+</div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-4-5.png" class="img-fluid" width="672"></p>
+</div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-4-6.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb47"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">applyBiasCorrection</span>(fit)</span>
+<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">eBayes</span>(fit)</span>
+<span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>tt <span class="ot">&lt;-</span> <span class="fu">topTable</span>(fit, <span class="at">coef=</span><span class="dv">2</span>, <span class="at">number=</span><span class="cn">Inf</span>) <span class="co"># SLE vs healthy</span></span>
+<span id="cb47-4"><a href="#cb47-4" aria-hidden="true" tabindex="-1"></a>tt</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>                  logFC    AveExpr          t      P.Value    adj.P.Val
+T_mait      -1.82246480 -1.6554161 -7.5528607 4.915082e-12 6.881115e-11
+T4_naive    -0.72500395  1.6624097 -4.7687198 4.579764e-06 3.205835e-05
+B_mem       -0.65715425  0.1492307 -3.5376429 5.473791e-04 2.554436e-03
+T4_reg       0.28350143  0.3626806  2.5084609 1.326113e-02 4.641397e-02
+Progen      -0.46972597 -0.9799428 -2.1731649 3.144208e-02 8.803784e-02
+B_atypical   0.46797486 -1.7710621  1.7613552 8.035103e-02 1.874857e-01
+T4_em        0.17062256  1.3092586  1.3459405 1.804870e-01 3.558734e-01
+CytoT_GZMH+  0.31679812  1.1958926  1.2779948 2.033562e-01 3.558734e-01
+B_plasma    -0.14568700 -3.0222284 -0.5702365 5.694270e-01 6.643315e-01
+NK_dim      -0.16362334  0.7947147 -0.7660269 4.449438e-01 6.017833e-01
+B_naive     -0.18158109  1.1749747 -0.7198207 4.728297e-01 6.017833e-01
+CytoT_GZMK+  0.11158985  0.8630776  0.7538936 4.521733e-01 6.017833e-01
+NK_bright   -0.03481907 -0.9439738 -0.1750975 8.612548e-01 8.612548e-01
+T8_naive    -0.04585092  0.8603840 -0.1870643 8.518798e-01 8.612548e-01
+                    B
+T_mait      16.874882
+T4_naive     3.384710
+B_mem       -1.204429
+T4_reg      -4.122911
+Progen      -4.753937
+B_atypical  -5.335123
+T4_em       -6.272717
+CytoT_GZMH+ -6.382354
+B_plasma    -6.629421
+NK_dim      -6.895448
+B_naive     -6.922379
+CytoT_GZMK+ -6.923946
+NK_bright   -7.008037
+T8_naive    -7.180411</code></pre>
+</div>
+</div>
+</section>
+<section id="differential-abundance-analysis-using-linda" class="level3">
+<h3 class="anchored" data-anchor-id="differential-abundance-analysis-using-linda">Differential abundance analysis using LinDA</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb49"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a><span class="do">## linda</span></span>
+<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(MicrobiomeStat)</span>
+<span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(phyloseq)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+Attaching package: 'phyloseq'</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following object is masked from 'package:SummarizedExperiment':
+
+    distance</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following object is masked from 'package:Biobase':
+
+    sampleNames</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following object is masked from 'package:GenomicRanges':
+
+    distance</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following object is masked from 'package:IRanges':
+
+    distance</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb55"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a>lindaRes <span class="ot">&lt;-</span> MicrobiomeStat<span class="sc">::</span><span class="fu">linda</span>(<span class="at">feature.dat =</span> lupusCountMatAsian, <span class="co"># rows features, cols samples</span></span>
+<span id="cb55-2"><a href="#cb55-2" aria-hidden="true" tabindex="-1"></a>                                    <span class="at">meta.dat =</span> <span class="fu">as.data.frame</span>(lupusMetaAsian),</span>
+<span id="cb55-3"><a href="#cb55-3" aria-hidden="true" tabindex="-1"></a>                                    <span class="at">formula =</span> <span class="st">'~SLE_status + Processing_Cohort + (1|ind_cov)'</span>,</span>
+<span id="cb55-4"><a href="#cb55-4" aria-hidden="true" tabindex="-1"></a>                                    <span class="at">feature.dat.type =</span> <span class="st">'count'</span>,</span>
+<span id="cb55-5"><a href="#cb55-5" aria-hidden="true" tabindex="-1"></a>                                    <span class="at">is.winsor =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb55-6"><a href="#cb55-6" aria-hidden="true" tabindex="-1"></a>                                    <span class="at">zero.handling =</span> <span class="st">'pseudo-count'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>0  features are filtered!
+The filtered data has  137  samples and  14  features will be tested!
+Pseudo-count approach is used.
+Fit linear mixed effects models ...
+Completed.</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb57"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb57-1"><a href="#cb57-1" aria-hidden="true" tabindex="-1"></a>lindaRes<span class="sc">$</span>output<span class="sc">$</span>SLE_statusSLE[<span class="fu">order</span>(<span class="fu">abs</span>(lindaRes<span class="sc">$</span>output<span class="sc">$</span>SLE_statusSLE<span class="sc">$</span>stat), <span class="at">decreasing=</span><span class="cn">TRUE</span>),]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>              baseMean log2FoldChange     lfcSE       stat       pvalue
+T_mait       21414.053    -2.33931684 0.3732715 -6.2670657 5.593723e-09
+T4_naive    227586.210    -1.01724386 0.2186690 -4.6519812 8.184503e-06
+B_mem        94838.668    -0.90258788 0.2592315 -3.4817826 6.846093e-04
+T4_reg       23191.098     0.48753183 0.1562155  3.1208926 2.233841e-03
+T4_em        89590.721     0.36804225 0.1701927  2.1625034 3.246616e-02
+B_atypical    2850.750     0.71103057 0.3538042  2.0096728 4.660843e-02
+CytoT_GZMH+  96277.099     0.71442978 0.3576965  1.9973069 4.792940e-02
+Progen       15633.587    -0.63858899 0.3254830 -1.9619735 5.194893e-02
+CytoT_GZMK+  79526.421     0.25151737 0.2199733  1.1433997 2.550313e-01
+NK_dim      101227.724    -0.17638802 0.3090621 -0.5707203 5.691902e-01
+B_plasma      2637.938    -0.16721470 0.3767742 -0.4438061 6.579352e-01
+B_naive     160528.328    -0.15736360 0.3781632 -0.4161261 6.780211e-01
+NK_bright    16616.897    -0.10536158 0.2926284 -0.3600524 7.194056e-01
+T8_naive     68080.504    -0.04009749 0.3436404 -0.1166845 9.073001e-01
+                    padj reject       df
+T_mait      7.831212e-08   TRUE 123.5861
+T4_naive    5.729152e-05   TRUE 126.0932
+B_mem       3.194843e-03   TRUE 126.3471
+T4_reg      7.818444e-03   TRUE 126.6044
+T4_em       9.090524e-02  FALSE 126.1408
+B_atypical  9.091062e-02  FALSE 125.6178
+CytoT_GZMH+ 9.091062e-02  FALSE 126.9829
+Progen      9.091062e-02  FALSE 127.2156
+CytoT_GZMK+ 3.967154e-01  FALSE 126.5343
+NK_dim      7.747445e-01  FALSE 127.9543
+B_plasma    7.747445e-01  FALSE 127.4744
+B_naive     7.747445e-01  FALSE 126.8111
+NK_bright   7.747445e-01  FALSE 127.0816
+T8_naive    9.073001e-01  FALSE 123.2112</code></pre>
+</div>
+</div>
+</section>
+<section id="differential-abundance-analysis-using-nb-model" class="level3">
+<h3 class="anchored" data-anchor-id="differential-abundance-analysis-using-nb-model">Differential abundance analysis using NB model</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb59"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb59-1"><a href="#cb59-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(glmmTMB)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in checkMatrixPackageVersion(): Package version inconsistency detected.
+TMB was built with Matrix version 1.4.1
+Current Matrix version is 1.5.1
+Please re-install 'TMB' from source using install.packages('TMB', type = 'source') or ask CRAN for a binary version of 'TMB' matching CRAN's 'Matrix' package</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in checkDepPackageVersion(dep_pkg = "TMB"): Package version inconsistency detected.
+glmmTMB was built with TMB version 1.9.0
+Current TMB version is 1.9.1
+Please re-install glmmTMB from source or restore original 'TMB' package (see '?reinstalling' for more information)</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb62"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb62-1"><a href="#cb62-1" aria-hidden="true" tabindex="-1"></a>resDfNB <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">population=</span><span class="fu">rownames</span>(lupusCountMatAsian),</span>
+<span id="cb62-2"><a href="#cb62-2" aria-hidden="true" tabindex="-1"></a>                      <span class="at">diff=</span><span class="fu">rep</span>(<span class="cn">NA</span>,<span class="fu">nrow</span>(lupusCountMatAsian)),</span>
+<span id="cb62-3"><a href="#cb62-3" aria-hidden="true" tabindex="-1"></a>                      <span class="at">se=</span><span class="fu">rep</span>(<span class="cn">NA</span>,<span class="fu">nrow</span>(lupusCountMatAsian)),</span>
+<span id="cb62-4"><a href="#cb62-4" aria-hidden="true" tabindex="-1"></a>                      <span class="at">pval=</span><span class="fu">rep</span>(<span class="cn">NA</span>,<span class="fu">nrow</span>(lupusCountMatAsian)))</span>
+<span id="cb62-5"><a href="#cb62-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span>(pp <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span><span class="fu">nrow</span>(lupusCountMatAsian)){</span>
+<span id="cb62-6"><a href="#cb62-6" aria-hidden="true" tabindex="-1"></a>  curY <span class="ot">&lt;-</span> lupusCountMatAsian[pp,]</span>
+<span id="cb62-7"><a href="#cb62-7" aria-hidden="true" tabindex="-1"></a>  m_p <span class="ot">&lt;-</span> <span class="fu">glmmTMB</span>(curY <span class="sc">~</span> <span class="sc">-</span><span class="dv">1</span> <span class="sc">+</span> designAsian <span class="sc">+</span> (<span class="dv">1</span><span class="sc">|</span>patientAsian), </span>
+<span id="cb62-8"><a href="#cb62-8" aria-hidden="true" tabindex="-1"></a>                 <span class="at">family=</span><span class="fu">nbinom2</span>(<span class="at">link=</span><span class="st">"log"</span>),</span>
+<span id="cb62-9"><a href="#cb62-9" aria-hidden="true" tabindex="-1"></a>                 <span class="at">offset =</span> <span class="fu">log</span>(<span class="fu">colSums</span>(lupusCountMatAsian)))</span>
+<span id="cb62-10"><a href="#cb62-10" aria-hidden="true" tabindex="-1"></a>  resDfNB[pp,<span class="dv">2</span><span class="sc">:</span><span class="dv">4</span>] <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="fu">summary</span>(m_p)<span class="sc">$</span>coef<span class="sc">$</span>cond[<span class="st">"designAsianSLE_statusSLE"</span>,<span class="fu">c</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">4</span>)])</span>
+<span id="cb62-11"><a href="#cb62-11" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in glmmTMB(curY ~ -1 + designAsian + (1 | patientAsian), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in glmmTMB(curY ~ -1 + designAsian + (1 | patientAsian), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designAsian + (1 | patientAsian), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designAsian + (1 | patientAsian), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designAsian + (1 | patientAsian), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designAsian + (1 | patientAsian), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designAsian + (1 | patientAsian), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designAsian + (1 | patientAsian), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designAsian + (1 | patientAsian), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designAsian + (1 | patientAsian), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designAsian + (1 | patientAsian), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designAsian + (1 | patientAsian), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designAsian + (1 | patientAsian), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designAsian + (1 | patientAsian), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb65"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a>resDfNB<span class="sc">$</span>padj <span class="ot">&lt;-</span> <span class="fu">p.adjust</span>(resDfNB<span class="sc">$</span>pval, <span class="st">"fdr"</span>)</span>
+<span id="cb65-2"><a href="#cb65-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb65-3"><a href="#cb65-3" aria-hidden="true" tabindex="-1"></a>resDfNB[<span class="fu">order</span>(<span class="fu">abs</span>(resDfNB<span class="sc">$</span>pval)),]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>    population        diff         se         pval         padj
+7       T_mait -1.41494693 0.25829735 4.302160e-08 6.023024e-07
+1     T4_naive -0.70690452 0.14578852 1.241885e-06 8.693198e-06
+4       T4_reg  0.34763886 0.09448871 2.340056e-04 1.092026e-03
+11       B_mem -0.60096372 0.17242534 4.914824e-04 1.720189e-03
+3        T4_em  0.25317069 0.10370827 1.463930e-02 4.099005e-02
+5  CytoT_GZMH+  0.52249814 0.22338877 1.933733e-02 4.512043e-02
+12  B_atypical  0.54865527 0.25776415 3.329428e-02 6.658856e-02
+13      Progen -0.41659565 0.21590751 5.366761e-02 9.391831e-02
+6  CytoT_GZMK+  0.18206077 0.12797375 1.548401e-01 2.408624e-01
+10     B_naive  0.13322494 0.20786111 5.215665e-01 7.301932e-01
+8    NK_bright  0.08529402 0.19274139 6.581051e-01 8.375883e-01
+9       NK_dim -0.05777348 0.20984794 7.830772e-01 9.135901e-01
+2     T8_naive -0.02974327 0.23077983 8.974514e-01 9.349038e-01
+14    B_plasma  0.02430466 0.29757172 9.349038e-01 9.349038e-01</code></pre>
+</div>
+</div>
+</section>
+<section id="compare-methods" class="level3">
+<h3 class="anchored" data-anchor-id="compare-methods">Compare methods</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb67"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb67-1"><a href="#cb67-1" aria-hidden="true" tabindex="-1"></a>allPopulations <span class="ot">&lt;-</span> <span class="fu">rownames</span>(lupusCountMatAsian)</span>
+<span id="cb67-2"><a href="#cb67-2" aria-hidden="true" tabindex="-1"></a>nPopulations <span class="ot">&lt;-</span> <span class="fu">nrow</span>(lupusCountMatAsian)</span>
+<span id="cb67-3"><a href="#cb67-3" aria-hidden="true" tabindex="-1"></a>allMethods <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"voomCLR"</span>, <span class="st">"LinDA"</span>, <span class="st">"NBGLM"</span>)</span>
+<span id="cb67-4"><a href="#cb67-4" aria-hidden="true" tabindex="-1"></a>nMethods <span class="ot">&lt;-</span> <span class="fu">length</span>(allMethods)</span>
+<span id="cb67-5"><a href="#cb67-5" aria-hidden="true" tabindex="-1"></a>resDfAll <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">population =</span> <span class="fu">rep</span>(allPopulations, nMethods),</span>
+<span id="cb67-6"><a href="#cb67-6" aria-hidden="true" tabindex="-1"></a>                       <span class="at">method =</span> <span class="fu">rep</span>(allMethods, <span class="at">each=</span>nPopulations),</span>
+<span id="cb67-7"><a href="#cb67-7" aria-hidden="true" tabindex="-1"></a>                       <span class="at">log2FC =</span> <span class="fu">c</span>(tt[allPopulations,]<span class="sc">$</span>logFC,</span>
+<span id="cb67-8"><a href="#cb67-8" aria-hidden="true" tabindex="-1"></a>                                      lindaRes<span class="sc">$</span>output<span class="sc">$</span>SLE_statusSLE[allPopulations,]<span class="sc">$</span>log2FoldChange,</span>
+<span id="cb67-9"><a href="#cb67-9" aria-hidden="true" tabindex="-1"></a>                                      <span class="fu">log2</span>(<span class="fu">exp</span>(resDfNB<span class="sc">$</span>diff))),</span>
+<span id="cb67-10"><a href="#cb67-10" aria-hidden="true" tabindex="-1"></a>                       <span class="at">padj =</span> <span class="fu">c</span>(tt[allPopulations,]<span class="sc">$</span>adj.P.Val,</span>
+<span id="cb67-11"><a href="#cb67-11" aria-hidden="true" tabindex="-1"></a>                                      lindaRes<span class="sc">$</span>output<span class="sc">$</span>SLE_statusSLE[allPopulations,]<span class="sc">$</span>padj,</span>
+<span id="cb67-12"><a href="#cb67-12" aria-hidden="true" tabindex="-1"></a>                                      <span class="fu">log2</span>(<span class="fu">exp</span>(resDfNB<span class="sc">$</span>padj)))</span>
+<span id="cb67-13"><a href="#cb67-13" aria-hidden="true" tabindex="-1"></a>                       </span>
+<span id="cb67-14"><a href="#cb67-14" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb67-15"><a href="#cb67-15" aria-hidden="true" tabindex="-1"></a>resDfAll<span class="sc">$</span>DA <span class="ot">&lt;-</span> resDfAll<span class="sc">$</span>padj <span class="sc">&lt;=</span> <span class="fl">0.05</span></span>
+<span id="cb67-16"><a href="#cb67-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb67-17"><a href="#cb67-17" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(resDfAll, </span>
+<span id="cb67-18"><a href="#cb67-18" aria-hidden="true" tabindex="-1"></a>       <span class="fu">aes</span>(<span class="at">x=</span>population, <span class="at">y=</span>method, <span class="at">color=</span>log2FC, <span class="at">size=</span>DA)) <span class="sc">+</span></span>
+<span id="cb67-19"><a href="#cb67-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()<span class="sc">+</span></span>
+<span id="cb67-20"><a href="#cb67-20" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_grid</span>(<span class="sc">~</span>population, <span class="at">scales =</span> <span class="st">"free_x"</span>, <span class="at">space =</span> <span class="st">"free"</span>)<span class="sc">+</span></span>
+<span id="cb67-21"><a href="#cb67-21" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_light</span>()<span class="sc">+</span></span>
+<span id="cb67-22"><a href="#cb67-22" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_color_gradient2</span>(<span class="at">low=</span> <span class="st">"blue"</span>, <span class="at">mid=</span><span class="st">"gray"</span>, <span class="at">high=</span> <span class="st">"red"</span>) <span class="sc">+</span></span>
+<span id="cb67-23"><a href="#cb67-23" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">axis.text.x =</span> <span class="fu">element_text</span>(<span class="at">angle=</span><span class="dv">45</span>, <span class="at">hjust =</span> <span class="dv">1</span>, <span class="at">vjust =</span> <span class="dv">1</span>),</span>
+<span id="cb67-24"><a href="#cb67-24" aria-hidden="true" tabindex="-1"></a>        <span class="at">strip.text.x =</span> <span class="fu">element_text</span>(<span class="at">size=</span><span class="dv">14</span>, <span class="at">angle=</span><span class="dv">90</span>, <span class="at">hjust =</span> <span class="dv">1</span>, <span class="at">vjust =</span> <span class="dv">1</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning: Using size for a discrete variable is not advised.</code></pre>
+</div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-7-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+</section>
+<section id="european-ancestry-1" class="level2">
+<h2 class="anchored" data-anchor-id="european-ancestry-1">European ancestry</h2>
+<section id="voomclr-1" class="level3">
+<h3 class="anchored" data-anchor-id="voomclr-1">voomCLR</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb69"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb69-1"><a href="#cb69-1" aria-hidden="true" tabindex="-1"></a>patientEuropean <span class="ot">&lt;-</span> lupusMetaEuropean<span class="sc">$</span>ind_cov</span>
+<span id="cb69-2"><a href="#cb69-2" aria-hidden="true" tabindex="-1"></a>designEuropean <span class="ot">&lt;-</span> <span class="fu">model.matrix</span>(<span class="sc">~</span>SLE_status <span class="sc">+</span> Processing_Cohort, <span class="at">data=</span>lupusMetaEuropean)</span>
+<span id="cb69-3"><a href="#cb69-3" aria-hidden="true" tabindex="-1"></a>v <span class="ot">&lt;-</span> <span class="fu">voomCLR</span>(<span class="at">counts =</span> lupusCountMatEuropean,</span>
+<span id="cb69-4"><a href="#cb69-4" aria-hidden="true" tabindex="-1"></a>             <span class="at">design =</span> designEuropean,</span>
+<span id="cb69-5"><a href="#cb69-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">lib.size =</span> <span class="cn">NULL</span>,</span>
+<span id="cb69-6"><a href="#cb69-6" aria-hidden="true" tabindex="-1"></a>             <span class="at">plot =</span> <span class="cn">TRUE</span>, </span>
+<span id="cb69-7"><a href="#cb69-7" aria-hidden="true" tabindex="-1"></a>             <span class="at">span=</span>.<span class="dv">8</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-8-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb70"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb70-1"><a href="#cb70-1" aria-hidden="true" tabindex="-1"></a>cf <span class="ot">&lt;-</span> <span class="fu">duplicateCorrelation</span>(v, designEuropean, <span class="at">block=</span>patientEuropean)</span>
+<span id="cb70-2"><a href="#cb70-2" aria-hidden="true" tabindex="-1"></a>v <span class="ot">&lt;-</span> <span class="fu">voomCLR</span>(<span class="at">counts =</span> lupusCountMatEuropean,</span>
+<span id="cb70-3"><a href="#cb70-3" aria-hidden="true" tabindex="-1"></a>             <span class="at">design =</span> designEuropean,</span>
+<span id="cb70-4"><a href="#cb70-4" aria-hidden="true" tabindex="-1"></a>             <span class="at">lib.size =</span> <span class="cn">NULL</span>,</span>
+<span id="cb70-5"><a href="#cb70-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">block =</span> patientEuropean,</span>
+<span id="cb70-6"><a href="#cb70-6" aria-hidden="true" tabindex="-1"></a>             <span class="at">correlation =</span> cf<span class="sc">$</span>consensus, </span>
+<span id="cb70-7"><a href="#cb70-7" aria-hidden="true" tabindex="-1"></a>             <span class="at">span=</span>.<span class="dv">8</span>)</span>
+<span id="cb70-8"><a href="#cb70-8" aria-hidden="true" tabindex="-1"></a>cf <span class="ot">&lt;-</span> <span class="fu">duplicateCorrelation</span>(v, designEuropean, <span class="at">block=</span>patientEuropean)</span>
+<span id="cb70-9"><a href="#cb70-9" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">lmFit</span>(v, designEuropean,</span>
+<span id="cb70-10"><a href="#cb70-10" aria-hidden="true" tabindex="-1"></a>             <span class="at">block =</span> patientEuropean,</span>
+<span id="cb70-11"><a href="#cb70-11" aria-hidden="true" tabindex="-1"></a>             <span class="at">correlation =</span> cf<span class="sc">$</span>consensus)</span>
+<span id="cb70-12"><a href="#cb70-12" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">lmFit</span>(v, designEuropean)</span>
+<span id="cb70-13"><a href="#cb70-13" aria-hidden="true" tabindex="-1"></a><span class="fu">plotBeta</span>(fit)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-8-2.png" class="img-fluid" width="672"></p>
+</div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-8-3.png" class="img-fluid" width="672"></p>
+</div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-8-4.png" class="img-fluid" width="672"></p>
+</div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-8-5.png" class="img-fluid" width="672"></p>
+</div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-8-6.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb71"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb71-1"><a href="#cb71-1" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">applyBiasCorrection</span>(fit)</span>
+<span id="cb71-2"><a href="#cb71-2" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">eBayes</span>(fit)</span>
+<span id="cb71-3"><a href="#cb71-3" aria-hidden="true" tabindex="-1"></a>tt <span class="ot">&lt;-</span> <span class="fu">topTable</span>(fit, <span class="at">coef=</span><span class="dv">2</span>, <span class="at">number=</span><span class="cn">Inf</span>) <span class="co"># SLE vs healthy</span></span>
+<span id="cb71-4"><a href="#cb71-4" aria-hidden="true" tabindex="-1"></a>tt</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>                  logFC    AveExpr          t      P.Value    adj.P.Val
+T4_em        0.65801012  1.2387484  9.2419928 2.492030e-17 3.488842e-16
+T4_reg       0.64685142  0.1532354  8.9812467 1.408067e-16 9.856467e-16
+T_mait      -1.21462533 -0.7601482 -7.5736379 1.074579e-12 5.014703e-12
+CytoT_GZMK+  0.61650816  0.7013655  6.5545043 4.106127e-10 1.437145e-09
+CytoT_GZMH+  0.93632293  0.5904838  6.0025665 8.214415e-09 2.300036e-08
+T4_naive    -0.43289973  2.2246062 -4.9576303 1.450478e-06 3.384448e-06
+B_mem       -0.53874551  0.3976835 -4.3760869 1.888268e-05 3.776537e-05
+NK_dim       0.30636671  1.0571044  2.4462932 1.524032e-02 2.667057e-02
+Progen      -0.26506308 -0.9182484 -2.2319489 2.665477e-02 4.146298e-02
+B_atypical   0.30304444 -2.4213090  1.9280555 5.517150e-02 7.724010e-02
+B_plasma    -0.04891389 -3.5331163 -0.3129422 7.546293e-01 7.546293e-01
+NK_bright    0.06385272 -0.5946499  0.5645098 5.729984e-01 6.684982e-01
+T8_naive    -0.06495089  0.9157786 -0.5652141 5.725201e-01 6.684982e-01
+B_naive     -0.08302393  0.9484658 -0.4858728 6.275545e-01 6.758279e-01
+                    B
+T4_em       28.664632
+T4_reg      27.014405
+T_mait      18.315910
+CytoT_GZMK+ 12.389905
+CytoT_GZMH+  9.482724
+T4_naive     4.296865
+B_mem        2.031427
+NK_dim      -4.225554
+Progen      -4.490091
+B_atypical  -4.840980
+B_plasma    -6.470664
+NK_bright   -6.846987
+T8_naive    -6.992155
+B_naive     -7.042413</code></pre>
+</div>
+</div>
+</section>
+<section id="differential-abundance-analysis-using-linda-1" class="level3">
+<h3 class="anchored" data-anchor-id="differential-abundance-analysis-using-linda-1">Differential abundance analysis using LinDA</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb73"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb73-1"><a href="#cb73-1" aria-hidden="true" tabindex="-1"></a><span class="do">## linda</span></span>
+<span id="cb73-2"><a href="#cb73-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(MicrobiomeStat)</span>
+<span id="cb73-3"><a href="#cb73-3" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(phyloseq)</span>
+<span id="cb73-4"><a href="#cb73-4" aria-hidden="true" tabindex="-1"></a>lindaRes <span class="ot">&lt;-</span> MicrobiomeStat<span class="sc">::</span><span class="fu">linda</span>(<span class="at">feature.dat =</span> lupusCountMatEuropean, <span class="co"># rows features, cols samples</span></span>
+<span id="cb73-5"><a href="#cb73-5" aria-hidden="true" tabindex="-1"></a>                                    <span class="at">meta.dat =</span> <span class="fu">as.data.frame</span>(lupusMetaEuropean),</span>
+<span id="cb73-6"><a href="#cb73-6" aria-hidden="true" tabindex="-1"></a>                                    <span class="at">formula =</span> <span class="st">'~SLE_status + Processing_Cohort + (1|ind_cov)'</span>,</span>
+<span id="cb73-7"><a href="#cb73-7" aria-hidden="true" tabindex="-1"></a>                                    <span class="at">feature.dat.type =</span> <span class="st">'count'</span>,</span>
+<span id="cb73-8"><a href="#cb73-8" aria-hidden="true" tabindex="-1"></a>                                    <span class="at">is.winsor =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb73-9"><a href="#cb73-9" aria-hidden="true" tabindex="-1"></a>                                    <span class="at">zero.handling =</span> <span class="st">'pseudo-count'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>0  features are filtered!
+The filtered data has  211  samples and  14  features will be tested!
+Imputation approach is used.
+Fit linear mixed effects models ...
+Completed.</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb75"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb75-1"><a href="#cb75-1" aria-hidden="true" tabindex="-1"></a>lindaRes<span class="sc">$</span>output<span class="sc">$</span>SLE_statusSLE[<span class="fu">order</span>(<span class="fu">abs</span>(lindaRes<span class="sc">$</span>output<span class="sc">$</span>SLE_statusSLE<span class="sc">$</span>stat), <span class="at">decreasing=</span><span class="cn">TRUE</span>),]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>               baseMean log2FoldChange     lfcSE       stat       pvalue
+T4_em        82483.8776     0.98355994 0.1107338  8.8821991 1.084047e-15
+T4_reg       28329.2705     0.86888003 0.1126127  7.7156469 1.011720e-12
+T_mait       26976.7656    -1.70950278 0.2622318 -6.5190527 8.872468e-10
+CytoT_GZMK+  60630.1708     0.81471913 0.1452314  5.6097990 8.290061e-08
+CytoT_GZMH+  56098.2973     1.06668633 0.2350454  4.5382146 1.072197e-05
+T4_naive    324669.6889    -0.60679730 0.1378035 -4.4033517 1.924872e-05
+B_mem        75697.8424    -0.74737378 0.1875826 -3.9842392 9.951570e-05
+Progen       15360.5145    -0.58926954 0.1950543 -3.0210536 2.939741e-03
+NK_dim      103446.0308     0.42411759 0.1947553  2.1776951 3.083717e-02
+B_atypical    3433.4127     0.40911725 0.2405617  1.7006752 9.079234e-02
+T8_naive     93230.1621    -0.22718376 0.1841995 -1.2333569 2.192326e-01
+NK_bright    20553.1856     0.09796988 0.1741809  0.5624606 5.745536e-01
+B_plasma       681.7137    -0.08076042 0.2409990 -0.3351069 7.379730e-01
+B_naive     108409.0675    -0.07371852 0.2669000 -0.2762028 7.827119e-01
+                    padj reject       df
+T4_em       1.517666e-14   TRUE 164.7147
+T4_reg      7.082042e-12   TRUE 168.2485
+T_mait      4.140485e-09   TRUE 159.4119
+CytoT_GZMK+ 2.901521e-07   TRUE 166.3559
+CytoT_GZMH+ 3.002151e-05   TRUE 169.1837
+T4_naive    4.491369e-05   TRUE 162.6145
+B_mem       1.990314e-04   TRUE 173.4574
+Progen      5.144547e-03   TRUE 157.7117
+NK_dim      4.796892e-02   TRUE 166.3285
+B_atypical  1.271093e-01  FALSE 173.8204
+T8_naive    2.790233e-01  FALSE 161.6919
+NK_bright   6.703125e-01  FALSE 167.6414
+B_plasma    7.827119e-01  FALSE 163.8897
+B_naive     7.827119e-01  FALSE 178.4739</code></pre>
+</div>
+</div>
+</section>
+<section id="differential-abundance-analysis-using-nb-model-1" class="level3">
+<h3 class="anchored" data-anchor-id="differential-abundance-analysis-using-nb-model-1">Differential abundance analysis using NB model</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb77"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb77-1"><a href="#cb77-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(glmmTMB)</span>
+<span id="cb77-2"><a href="#cb77-2" aria-hidden="true" tabindex="-1"></a>resDfNB <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">population=</span><span class="fu">rownames</span>(lupusCountMatEuropean),</span>
+<span id="cb77-3"><a href="#cb77-3" aria-hidden="true" tabindex="-1"></a>                      <span class="at">diff=</span><span class="fu">rep</span>(<span class="cn">NA</span>,<span class="fu">nrow</span>(lupusCountMatEuropean)),</span>
+<span id="cb77-4"><a href="#cb77-4" aria-hidden="true" tabindex="-1"></a>                      <span class="at">se=</span><span class="fu">rep</span>(<span class="cn">NA</span>,<span class="fu">nrow</span>(lupusCountMatEuropean)),</span>
+<span id="cb77-5"><a href="#cb77-5" aria-hidden="true" tabindex="-1"></a>                      <span class="at">pval=</span><span class="fu">rep</span>(<span class="cn">NA</span>,<span class="fu">nrow</span>(lupusCountMatEuropean)))</span>
+<span id="cb77-6"><a href="#cb77-6" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span>(pp <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span><span class="fu">nrow</span>(lupusCountMatEuropean)){</span>
+<span id="cb77-7"><a href="#cb77-7" aria-hidden="true" tabindex="-1"></a>  curY <span class="ot">&lt;-</span> lupusCountMatEuropean[pp,]</span>
+<span id="cb77-8"><a href="#cb77-8" aria-hidden="true" tabindex="-1"></a>  m_p <span class="ot">&lt;-</span> <span class="fu">glmmTMB</span>(curY <span class="sc">~</span> <span class="sc">-</span><span class="dv">1</span> <span class="sc">+</span> designEuropean <span class="sc">+</span> (<span class="dv">1</span><span class="sc">|</span>patientEuropean), </span>
+<span id="cb77-9"><a href="#cb77-9" aria-hidden="true" tabindex="-1"></a>                 <span class="at">family=</span><span class="fu">nbinom2</span>(<span class="at">link=</span><span class="st">"log"</span>),</span>
+<span id="cb77-10"><a href="#cb77-10" aria-hidden="true" tabindex="-1"></a>                 <span class="at">offset =</span> <span class="fu">log</span>(<span class="fu">colSums</span>(lupusCountMatEuropean)))</span>
+<span id="cb77-11"><a href="#cb77-11" aria-hidden="true" tabindex="-1"></a>  resDfNB[pp,<span class="dv">2</span><span class="sc">:</span><span class="dv">4</span>] <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="fu">summary</span>(m_p)<span class="sc">$</span>coef<span class="sc">$</span>cond[<span class="st">"designEuropeanSLE_statusSLE"</span>,<span class="fu">c</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">4</span>)])</span>
+<span id="cb77-12"><a href="#cb77-12" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in glmmTMB(curY ~ -1 + designEuropean + (1 | patientEuropean), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designEuropean + (1 | patientEuropean), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designEuropean + (1 | patientEuropean), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designEuropean + (1 | patientEuropean), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designEuropean + (1 | patientEuropean), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designEuropean + (1 | patientEuropean), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designEuropean + (1 | patientEuropean), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designEuropean + (1 | patientEuropean), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designEuropean + (1 | patientEuropean), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designEuropean + (1 | patientEuropean), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designEuropean + (1 | patientEuropean), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designEuropean + (1 | patientEuropean), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designEuropean + (1 | patientEuropean), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended
+
+Warning in glmmTMB(curY ~ -1 + designEuropean + (1 | patientEuropean), family =
+nbinom2(link = "log"), : use of the 'data' argument is recommended</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb79"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb79-1"><a href="#cb79-1" aria-hidden="true" tabindex="-1"></a>resDfNB<span class="sc">$</span>padj <span class="ot">&lt;-</span> <span class="fu">p.adjust</span>(resDfNB<span class="sc">$</span>pval, <span class="st">"fdr"</span>)</span>
+<span id="cb79-2"><a href="#cb79-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb79-3"><a href="#cb79-3" aria-hidden="true" tabindex="-1"></a>resDfNB[<span class="fu">order</span>(<span class="fu">abs</span>(resDfNB<span class="sc">$</span>pval)),]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>    population        diff         se         pval         padj
+1     T4_naive -0.60544757 0.08097609 7.611469e-14 6.733515e-13
+3        T4_em  0.49861872 0.06696440 9.619307e-14 6.733515e-13
+7       T_mait -1.29754805 0.17894984 4.139996e-13 1.931998e-12
+4       T4_reg  0.42657509 0.06836040 4.373187e-10 1.530615e-09
+11       B_mem -0.62136803 0.11599386 8.465988e-08 2.370477e-07
+13      Progen -0.61805801 0.13741937 6.872326e-06 1.603543e-05
+6  CytoT_GZMK+  0.39042397 0.10003393 9.504092e-05 1.900818e-04
+5  CytoT_GZMH+  0.54393171 0.15412022 4.167094e-04 7.292415e-04
+2     T8_naive -0.37008711 0.12211840 2.441009e-03 3.797124e-03
+12  B_atypical  0.31559447 0.18055544 8.047980e-02 1.126717e-01
+9       NK_dim  0.12917327 0.12211389 2.901422e-01 3.692719e-01
+14    B_plasma -0.21613100 0.22678795 3.405854e-01 3.973496e-01
+10     B_naive -0.11031284 0.16656841 5.077998e-01 5.468613e-01
+8    NK_bright -0.03805489 0.10815399 7.249444e-01 7.249444e-01</code></pre>
+</div>
+</div>
+</section>
+<section id="compare-methods-1" class="level3">
+<h3 class="anchored" data-anchor-id="compare-methods-1">Compare methods</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb81"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb81-1"><a href="#cb81-1" aria-hidden="true" tabindex="-1"></a>allPopulations <span class="ot">&lt;-</span> <span class="fu">rownames</span>(lupusCountMatEuropean)</span>
+<span id="cb81-2"><a href="#cb81-2" aria-hidden="true" tabindex="-1"></a>nPopulations <span class="ot">&lt;-</span> <span class="fu">nrow</span>(lupusCountMatEuropean)</span>
+<span id="cb81-3"><a href="#cb81-3" aria-hidden="true" tabindex="-1"></a>allMethods <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"voomCLR"</span>, <span class="st">"LinDA"</span>, <span class="st">"NBGLM"</span>)</span>
+<span id="cb81-4"><a href="#cb81-4" aria-hidden="true" tabindex="-1"></a>nMethods <span class="ot">&lt;-</span> <span class="fu">length</span>(allMethods)</span>
+<span id="cb81-5"><a href="#cb81-5" aria-hidden="true" tabindex="-1"></a>resDfAll <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">population =</span> <span class="fu">rep</span>(allPopulations, nMethods),</span>
+<span id="cb81-6"><a href="#cb81-6" aria-hidden="true" tabindex="-1"></a>                       <span class="at">method =</span> <span class="fu">rep</span>(allMethods, <span class="at">each=</span>nPopulations),</span>
+<span id="cb81-7"><a href="#cb81-7" aria-hidden="true" tabindex="-1"></a>                       <span class="at">log2FC =</span> <span class="fu">c</span>(tt[allPopulations,]<span class="sc">$</span>logFC,</span>
+<span id="cb81-8"><a href="#cb81-8" aria-hidden="true" tabindex="-1"></a>                                      lindaRes<span class="sc">$</span>output<span class="sc">$</span>SLE_statusSLE[allPopulations,]<span class="sc">$</span>log2FoldChange,</span>
+<span id="cb81-9"><a href="#cb81-9" aria-hidden="true" tabindex="-1"></a>                                      <span class="fu">log2</span>(<span class="fu">exp</span>(resDfNB<span class="sc">$</span>diff))),</span>
+<span id="cb81-10"><a href="#cb81-10" aria-hidden="true" tabindex="-1"></a>                       <span class="at">padj =</span> <span class="fu">c</span>(tt[allPopulations,]<span class="sc">$</span>adj.P.Val,</span>
+<span id="cb81-11"><a href="#cb81-11" aria-hidden="true" tabindex="-1"></a>                                      lindaRes<span class="sc">$</span>output<span class="sc">$</span>SLE_statusSLE[allPopulations,]<span class="sc">$</span>padj,</span>
+<span id="cb81-12"><a href="#cb81-12" aria-hidden="true" tabindex="-1"></a>                                      <span class="fu">log2</span>(<span class="fu">exp</span>(resDfNB<span class="sc">$</span>padj)))</span>
+<span id="cb81-13"><a href="#cb81-13" aria-hidden="true" tabindex="-1"></a>                       </span>
+<span id="cb81-14"><a href="#cb81-14" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb81-15"><a href="#cb81-15" aria-hidden="true" tabindex="-1"></a>resDfAll<span class="sc">$</span>DA <span class="ot">&lt;-</span> resDfAll<span class="sc">$</span>padj <span class="sc">&lt;=</span> <span class="fl">0.05</span></span>
+<span id="cb81-16"><a href="#cb81-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb81-17"><a href="#cb81-17" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(resDfAll, </span>
+<span id="cb81-18"><a href="#cb81-18" aria-hidden="true" tabindex="-1"></a>       <span class="fu">aes</span>(<span class="at">x=</span>population, <span class="at">y=</span>method, <span class="at">color=</span>log2FC, <span class="at">size=</span>DA)) <span class="sc">+</span></span>
+<span id="cb81-19"><a href="#cb81-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()<span class="sc">+</span></span>
+<span id="cb81-20"><a href="#cb81-20" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_grid</span>(<span class="sc">~</span>population, <span class="at">scales =</span> <span class="st">"free_x"</span>, <span class="at">space =</span> <span class="st">"free"</span>)<span class="sc">+</span></span>
+<span id="cb81-21"><a href="#cb81-21" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_light</span>()<span class="sc">+</span></span>
+<span id="cb81-22"><a href="#cb81-22" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_color_gradient2</span>(<span class="at">low=</span> <span class="st">"blue"</span>, <span class="at">mid=</span><span class="st">"gray"</span>, <span class="at">high=</span> <span class="st">"red"</span>) <span class="sc">+</span></span>
+<span id="cb81-23"><a href="#cb81-23" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">axis.text.x =</span> <span class="fu">element_text</span>(<span class="at">angle=</span><span class="dv">45</span>, <span class="at">hjust =</span> <span class="dv">1</span>, <span class="at">vjust =</span> <span class="dv">1</span>),</span>
+<span id="cb81-24"><a href="#cb81-24" aria-hidden="true" tabindex="-1"></a>        <span class="at">strip.text.x =</span> <span class="fu">element_text</span>(<span class="at">size=</span><span class="dv">14</span>, <span class="at">angle=</span><span class="dv">90</span>, <span class="at">hjust =</span> <span class="dv">1</span>, <span class="at">vjust =</span> <span class="dv">1</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning: Using size for a discrete variable is not advised.</code></pre>
+</div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-11-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+</section>
+</section>
+<section id="visualization" class="level1 tabset tabset-pills">
+<h1 class="tabset tabset-pills">Visualization</h1>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb83"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb83-1"><a href="#cb83-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidyverse)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Registered S3 method overwritten by 'httr':
+  method         from  
+  print.response rmutil</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>── Attaching packages ─────────────────────────────────────── tidyverse 1.3.2 ──
+✔ tibble  3.1.8     ✔ dplyr   1.0.9
+✔ tidyr   1.2.0     ✔ stringr 1.4.1
+✔ readr   2.1.2     ✔ forcats 0.5.2
+✔ purrr   0.3.4     
+── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+✖ dplyr::collapse()   masks IRanges::collapse()
+✖ dplyr::combine()    masks Biobase::combine(), BiocGenerics::combine()
+✖ dplyr::count()      masks matrixStats::count()
+✖ dplyr::desc()       masks IRanges::desc()
+✖ tidyr::expand()     masks S4Vectors::expand()
+✖ dplyr::filter()     masks stats::filter()
+✖ dplyr::first()      masks S4Vectors::first()
+✖ dplyr::lag()        masks stats::lag()
+✖ ggplot2::Position() masks BiocGenerics::Position(), base::Position()
+✖ purrr::reduce()     masks GenomicRanges::reduce(), IRanges::reduce()
+✖ dplyr::rename()     masks S4Vectors::rename()
+✖ dplyr::slice()      masks IRanges::slice()</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb86"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb86-1"><a href="#cb86-1" aria-hidden="true" tabindex="-1"></a>lupusCountsLong <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="st">"../data/230705_popCountsLong_individualBatchID.rds"</span>)</span>
+<span id="cb86-2"><a href="#cb86-2" aria-hidden="true" tabindex="-1"></a>lupusCountsLong <span class="ot">&lt;-</span> lupusCountsLong[lupusCountsLong<span class="sc">$</span>pop_cov <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">"Asian"</span>, <span class="st">"European"</span>),]</span>
+<span id="cb86-3"><a href="#cb86-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb86-4"><a href="#cb86-4" aria-hidden="true" tabindex="-1"></a>lupusCountsLong <span class="ot">&lt;-</span> lupusCountsLong <span class="sc">%&gt;%</span> </span>
+<span id="cb86-5"><a href="#cb86-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(patient, group) <span class="sc">%&gt;%</span></span>
+<span id="cb86-6"><a href="#cb86-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">totalCells =</span> <span class="fu">sum</span>(nCells),</span>
+<span id="cb86-7"><a href="#cb86-7" aria-hidden="true" tabindex="-1"></a>         <span class="at">nCellTypes =</span> <span class="fu">n</span>(),</span>
+<span id="cb86-8"><a href="#cb86-8" aria-hidden="true" tabindex="-1"></a>         <span class="at">geoMean =</span> <span class="fu">prod</span>(nCells<span class="sc">+</span><span class="dv">1</span>)<span class="sc">^</span>(<span class="dv">1</span><span class="sc">/</span>nCellTypes),</span>
+<span id="cb86-9"><a href="#cb86-9" aria-hidden="true" tabindex="-1"></a>         <span class="at">CLR =</span> <span class="fu">log</span>((nCells<span class="sc">+</span><span class="dv">1</span>) <span class="sc">/</span> geoMean )) <span class="sc">%&gt;%</span></span>
+<span id="cb86-10"><a href="#cb86-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ungroup</span>() <span class="sc">%&gt;%</span></span>
+<span id="cb86-11"><a href="#cb86-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">fractionCells =</span> nCells <span class="sc">/</span> totalCells)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<section id="fraction" class="level2 tabset tabset-pills">
+<h2 class="tabset tabset-pills anchored" data-anchor-id="fraction">Fraction</h2>
+<section id="both-ancestries" class="level3">
+<h3 class="anchored" data-anchor-id="both-ancestries">Both ancestries</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb87"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb87-1"><a href="#cb87-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(lupusCountsLong, <span class="fu">aes</span>(<span class="at">x=</span>celltype, <span class="at">y=</span>fractionCells, <span class="at">fill=</span>SLE_status)) <span class="sc">+</span></span>
+<span id="cb87-2"><a href="#cb87-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>() <span class="sc">+</span></span>
+<span id="cb87-3"><a href="#cb87-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_classic</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-13-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+<section id="asian" class="level3">
+<h3 class="anchored" data-anchor-id="asian">Asian</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb88"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb88-1"><a href="#cb88-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(lupusCountsLong[lupusCountsLong<span class="sc">$</span>pop_cov <span class="sc">==</span> <span class="st">"Asian"</span>,], <span class="fu">aes</span>(<span class="at">x=</span>celltype, <span class="at">y=</span>fractionCells, <span class="at">fill=</span>SLE_status)) <span class="sc">+</span></span>
+<span id="cb88-2"><a href="#cb88-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>() <span class="sc">+</span></span>
+<span id="cb88-3"><a href="#cb88-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_classic</span>() <span class="sc">+</span></span>
+<span id="cb88-4"><a href="#cb88-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">"Asian"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-14-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+<section id="european" class="level3">
+<h3 class="anchored" data-anchor-id="european">European</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb89"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb89-1"><a href="#cb89-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(lupusCountsLong[lupusCountsLong<span class="sc">$</span>pop_cov <span class="sc">==</span> <span class="st">"European"</span>,], <span class="fu">aes</span>(<span class="at">x=</span>celltype, <span class="at">y=</span>fractionCells, <span class="at">fill=</span>SLE_status)) <span class="sc">+</span></span>
+<span id="cb89-2"><a href="#cb89-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>() <span class="sc">+</span></span>
+<span id="cb89-3"><a href="#cb89-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_classic</span>() <span class="sc">+</span></span>
+<span id="cb89-4"><a href="#cb89-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">"European"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-15-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+</section>
+<section id="clr" class="level2 tabset tabset-pills">
+<h2 class="tabset tabset-pills anchored" data-anchor-id="clr">CLR</h2>
+<section id="both-ancestries-1" class="level3">
+<h3 class="anchored" data-anchor-id="both-ancestries-1">Both ancestries</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb90"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb90-1"><a href="#cb90-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(lupusCountsLong, <span class="fu">aes</span>(<span class="at">x=</span>celltype, <span class="at">y=</span>CLR, <span class="at">fill=</span>SLE_status)) <span class="sc">+</span></span>
+<span id="cb90-2"><a href="#cb90-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>() <span class="sc">+</span></span>
+<span id="cb90-3"><a href="#cb90-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_classic</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-16-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+<section id="asian-1" class="level3">
+<h3 class="anchored" data-anchor-id="asian-1">Asian</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb91"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb91-1"><a href="#cb91-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(lupusCountsLong[lupusCountsLong<span class="sc">$</span>pop_cov <span class="sc">==</span> <span class="st">"Asian"</span>,], <span class="fu">aes</span>(<span class="at">x=</span>celltype, <span class="at">y=</span>CLR, <span class="at">fill=</span>SLE_status)) <span class="sc">+</span></span>
+<span id="cb91-2"><a href="#cb91-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>() <span class="sc">+</span></span>
+<span id="cb91-3"><a href="#cb91-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_classic</span>() <span class="sc">+</span></span>
+<span id="cb91-4"><a href="#cb91-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">"Asian"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-17-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+<section id="european-1" class="level3">
+<h3 class="anchored" data-anchor-id="european-1">European</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb92"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb92-1"><a href="#cb92-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(lupusCountsLong[lupusCountsLong<span class="sc">$</span>pop_cov <span class="sc">==</span> <span class="st">"European"</span>,], <span class="fu">aes</span>(<span class="at">x=</span>celltype, <span class="at">y=</span>CLR, <span class="at">fill=</span>SLE_status)) <span class="sc">+</span></span>
+<span id="cb92-2"><a href="#cb92-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>() <span class="sc">+</span></span>
+<span id="cb92-3"><a href="#cb92-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_classic</span>() <span class="sc">+</span></span>
+<span id="cb92-4"><a href="#cb92-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">"European"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="230712_lupusCaseStudy_v2_cellState_files/figure-html/unnamed-chunk-18-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+</section>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>

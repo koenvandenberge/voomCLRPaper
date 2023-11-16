@@ -290,7 +290,7 @@ lupusCountsWide <- readRDS("../data/lupusPopCountsWide.rds")
 ### take 48 healthy patients from processing cohort 1
 lupusHealthy1 <- lupusCountsWide[lupusCountsWide$Processing_Cohort == "1.0" & lupusCountsWide$Status == "Healthy",]
 lupusHealthy1CountMat <- as.matrix(lupusHealthy1[,-c(1:7)])
-lupusHealthy1Meta <- lupusHealthy1[,1:8]
+lupusHealthy1Meta <- lupusHealthy1[,1:7]
 
 ### Mean-variance of counts
 yBarLupus <- colMeans(lupusHealthy1CountMat)

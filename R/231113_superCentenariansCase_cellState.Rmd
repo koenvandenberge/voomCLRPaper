@@ -1,0 +1,408 @@
+---
+title: 'Supercentenarians: cell typing'
+author: "Koen Van den Berge"
+date: "2023-11-13"
+output: html_document
+---
+
+```{r}
+library(SingleCellExperiment)
+library(scran)
+library(scater)
+```
+
+```{r}
+sce <- readRDS("../data/SC2018/231115_sceAfterCellTypeAnnotation.rds")
+```
+
+# Cell states
+
+## B-cells
+
+Authors recover three subclusters. Naive B cells (IGHD+, CD27-), quiescent memory B cells (CD27+, IGHG1+, IGHA1+) and plasma cells (IGHA+, IGHG+, CD38+, MS4A1-)
+
+```{r}
+sceB <- sce[,sce$cellType == "B-cell"]
+sceB <- logNormCounts(sceB)
+dec <- modelGeneVar(sceB)
+hvgB <- getTopHVGs(dec, prop=0.05)
+set.seed(1234)
+sceB <- runPCA(sceB, 
+              ncomponents=10, 
+              subset_row=hvgB)
+sceB <- runUMAP(sceB, 
+               dimred = 'PCA', 
+               external_neighbors = TRUE,
+               ncomponents = 10,
+               min_dist=0.4)
+plotUMAP(sceB)
+
+plotUMAP(sceB, colour_by="IGHD")
+plotUMAP(sceB, colour_by="CD27")
+plotUMAP(sceB, colour_by="IGHG1")
+plotUMAP(sceB, colour_by="IGHA1")
+plotUMAP(sceB, colour_by="CD38")
+plotUMAP(sceB, colour_by="MS4A1")
+
+set.seed(464688)
+# Build a shared nearest-neighbor graph from PCA space
+graph <- buildSNNGraph(sceB, 
+                       use.dimred = 'PCA')
+# Leiden clustering on the SNN graph
+cluster_leidenB <- factor(igraph::cluster_leiden(graph = graph,
+                                                 resolution_parameter = 0.05)$membership) 
+nlevels(cluster_leidenB)
+colData(sceB)$cluster_leidenB <- cluster_leidenB
+plotUMAP(sceB, colour_by="cluster_leidenB")
+
+
+plotReducedDim(sceB, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="IGHD") +
+  xlim(c(2,4)) +
+  ylim(c(7.5,12))
+plotReducedDim(sceB, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="CD27") +
+  xlim(c(2,4)) +
+  ylim(c(7.5,12))
+
+plotReducedDim(sceB, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="IGHG1") +
+  xlim(c(2,4)) +
+  ylim(c(7.5,12))
+plotReducedDim(sceB, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="IGHA1") +
+  xlim(c(2,4)) +
+  ylim(c(7.5,12))
+
+
+plotReducedDim(sceB, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="CD38") +
+  xlim(c(2,4)) +
+  ylim(c(7.5,12))
+plotReducedDim(sceB, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="MS4A1") +
+  xlim(c(2,4)) +
+  ylim(c(7.5,12))
+```
+
+
+## T-cells
+
+```{r}
+sceT <- sce[,sce$cellType == "T-cell"]
+sceT <- logNormCounts(sceT)
+dec <- modelGeneVar(sceT)
+hvgT <- getTopHVGs(dec, prop=0.05)
+set.seed(1234)
+sceT <- runPCA(sceT, 
+              ncomponents=10, 
+              subset_row=hvgB)
+sceT <- runUMAP(sceT, 
+               dimred = 'PCA', 
+               external_neighbors = TRUE,
+               ncomponents = 10,
+               min_dist=0.2)
+plotUMAP(sceT)
+
+plotUMAP(sceT, colour_by="GZMB")
+plotUMAP(sceT, colour_by="GZMH")
+
+plotUMAP(sceT, colour_by="CCR7")
+plotUMAP(sceT, colour_by="SELL")
+
+
+
+set.seed(464688)
+# Build a shared nearest-neighbor graph from PCA space
+graph <- buildSNNGraph(sceT, 
+                       use.dimred = 'PCA')
+
+# Leiden clustering on the SNN graph
+cluster_leidenT <- factor(igraph::cluster_leiden(graph = graph,
+                                                 resolution_parameter = 0.001)$membership) 
+nlevels(cluster_leidenT)
+colData(sceT)$cluster_leidenT <- cluster_leidenT
+plotUMAP(sceT, colour_by="cluster_leidenT")
+
+```
+
+## Annotate on cell state level
+
+```{r}
+cellState <- sce$cellType
+cellState[sce$cellType == "B-cell"] <- paste0("B",cluster_leidenB)
+cellState[sce$cellType == "T-cell"] <-  paste0("T",cluster_leidenT)
+sce$cellState <- cellState
+sce$cellStateShort <- sce$cellState
+sce$cellStateShort[sce$cellStateShort == "CD14 Monocyte"] <- "CD14 Mono"
+sce$cellStateShort[sce$cellStateShort == "CD16 Monocyte"] <- "CD16 Mono"
+sce$cellStateShort[sce$cellStateShort == "Megakaryocyte"] <- "Megakaryo"
+
+
+plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=1/2, 
+               colour_by="cellState") +
+  scale_color_manual(values=dayjob::paletteDiscrete(values=unique(sce$cellState), set="bear"))
+```
+
+# Differential abundance on cell state level
+
+```{r}
+library(dayjob)
+cellCountsLong <- getCellPopulationCounts(sce,
+                                        patientVar = "sample",
+                                        cellTypeVar = "cellStateShort",
+                                        group = "condition",
+                                        format="long")
+cellCountsWide <- getCellPopulationCounts(sce,
+                                        patientVar = "sample",
+                                        cellTypeVar = "cellStateShort",
+                                        group = "condition",
+                                        format="wide")
+countMatrix <- cellCountsWide[,-c(1:2)]
+countMatrix <- t(as.matrix(countMatrix))
+
+
+cellCountsLong <- cellCountsLong %>% 
+  group_by(patient, group) %>%
+  mutate(totalCells = sum(nCells),
+         nCellTypes = n(),
+         geoMean = prod(nCells+1)^(1/nCellTypes),
+         CLR = log((nCells+1) / geoMean )) %>%
+  ungroup() %>%
+  mutate(fractionCells = nCells / totalCells)
+
+ggplot(cellCountsLong, aes(x=celltype, y=fractionCells, fill=group)) +
+  geom_boxplot(outlier.size = 0) +
+  geom_point(position = position_dodge(width = .75)) +
+  theme_classic()
+
+ggplot(cellCountsLong, aes(x=celltype, y=CLR, fill=group)) +
+  geom_boxplot(outlier.size = 0) +
+  geom_point(position = position_dodge(width = .75)) +
+  theme_classic()
+```
+
+
+## voomCLR
+
+```{r}
+library(limma)
+library(voomCLR)
+design <- model.matrix( ~ group, data=cellCountsWide)
+v <- voomCLR(counts = countMatrix,
+             design = design)
+fit <- lmFit(v, design)
+plotBeta(fit)
+fit <- applyBiasCorrection(fit)
+fit <- eBayes(fit)
+tt <- topTable(fit, coef=2, n=Inf)
+tt
+
+
+
+cLRMatAll <- v$E
+library(scater)
+pc <- calculatePCA(cLRMatAll,
+                  ncomponents=2,
+                  ntop=nrow(cLRMatAll))
+dfPCA <- cbind(data.frame(pc1=pc[,1], pc2=pc[,2]), cellCountsWide[,1:2])
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=group)) +
+  geom_point() +
+  theme_classic() +
+  xlab(paste0("PC1 (", round(attr(pc, "percentVar")[1], 1),"%)")) +
+  ylab(paste0("PC2 (", round(attr(pc, "percentVar")[2], 1),"%)"))
+
+```
+
+
+
+## NB-GLM
+
+```{r}
+library(glmmTMB)
+resDfNB <- data.frame(population=rownames(countMatrix),
+                      diff=rep(NA,nrow(countMatrix)),
+                      se=rep(NA,nrow(countMatrix)),
+                      pval=rep(NA,nrow(countMatrix)))
+for(pp in 1:nrow(countMatrix)){
+  curY <- countMatrix[pp,]
+  m_p <- glmmTMB(curY ~ -1 + design, 
+                 family=nbinom2(link="log"),
+                 offset = log(colSums(countMatrix)))
+  resDfNB[pp,2:4] <- c(summary(m_p)$coef$cond["designgroupSC",c(1,2,4)])
+}
+resDfNB$padj <- p.adjust(resDfNB$pval, "fdr")
+
+resDfNB[order(abs(resDfNB$pval)),]
+```
+
+
+## edgeR
+
+```{r}
+library(edgeR)
+d <- DGEList(countMatrix)
+d <- calcNormFactors(d)
+d <- estimateDisp(d, design)
+fit <- glmFit(d, design)
+lrt <- glmLRT(fit, coef=2)
+lrt$table$padj <- p.adjust(lrt$table$PValue, method="BH")
+lrt$table[order(lrt$table$LR, decreasing=TRUE),]
+```
+
+## LinDA
+
+```{r}
+library(MicrobiomeStat)
+library(phyloseq)
+lindaRes <- LinDA::linda(otu.tab = countMatrix, # rows features, cols samples
+                                    meta = as.data.frame(cellCountsWide),
+                                    formula = '~ group',
+                                    type = 'count',
+                                   adaptive=TRUE,
+                                   imputation = FALSE)
+
+lindaRes$output$groupSC[order(abs(lindaRes$output$groupSC$stat), decreasing=TRUE),]
+```
+
+# Summary of results
+
+```{r}
+allPopulations <- rownames(countMatrix)
+nPopulations <- nrow(countMatrix)
+allMethods <- c("voomCLR", "LinDA", "edgeR", "NBGLM")
+nMethods <- length(allMethods)
+resDfAll <- data.frame(population = rep(allPopulations, nMethods),
+                       method = rep(allMethods, each=nPopulations),
+                       log2FC = c(tt[allPopulations,]$logFC,
+                                  lindaRes$output$groupSC[allPopulations,]$log2FoldChange,
+                                  lrt$table[allPopulations,]$logFC,
+                                  log2(exp(resDfNB$diff))),
+                       padj = c(tt[allPopulations,]$adj.P.Val,
+                                lindaRes$output$groupSC[allPopulations,]$padj,
+                                lrt$table[allPopulations,]$padj,
+                                resDfNB$padj)
+                       
+)
+resDfAll$DA <- resDfAll$padj <= 0.05
+
+pComp <- ggplot(resDfAll, 
+       aes(x=population, y=method, color=log2FC, size=DA)) +
+  geom_point()+
+  facet_grid(~population, scales = "free_x", space = "free")+
+  theme_light()+
+  scale_color_gradient2(low= "blue", mid="gray", high= "red") +
+  theme(axis.text.x = element_text(angle=45, hjust = 1, vjust = 1),
+        strip.text.x = element_text(size=14, angle=90, hjust = 1, vjust = 1))
+pComp
+
+
+resDfAll$DA <- resDfAll$padj <= 0.06 # to show NB models are also at adjusted p-value around .05
+
+pComp06 <- ggplot(resDfAll, 
+       aes(x=population, y=method, color=log2FC, size=DA)) +
+  geom_point()+
+  facet_grid(~population, scales = "free_x", space = "free")+
+  theme_light()+
+  scale_color_gradient2(low= "blue", mid="gray", high= "red") +
+  theme(axis.text.x = element_text(angle=45, hjust = 1, vjust = 1),
+        strip.text.x = element_text(size=14, angle=90, hjust = 1, vjust = 1))
+pComp
+```
+
+
+
+```{r}
+plot(fit$coefficients[,2], lindaRes$output$groupSC$log2FoldChange,
+     xlab = "limma log2FC", ylab="linDA log2FC") ; abline(0,1,col="red")
+```
+
+
+# Composite figure
+
+```{r}
+axis <- ggh4x::guide_axis_truncated(
+  trunc_lower = unit(0, "npc"),
+  trunc_upper = unit(1, "cm")
+)
+pCT <- plotReducedDim(sce, 
+               dimred = "UMAP_fastMNNCorrected",
+               point_size=2/3, 
+               colour_by="cellType") +
+  scale_color_manual(values=dayjob::paletteDiscrete(values=unique(sce$cellType), set="bear")) +
+  labs(colour="Cell type") +
+  xlab("dim1") +
+  ylab("dim2") +
+  guides(x = axis, y = axis) +
+  theme(axis.line = element_line(arrow = arrow(angle=12)),
+        axis.title = element_text(hjust = 0)) +
+  scale_x_continuous(breaks = NULL) +
+  scale_y_continuous(breaks = NULL) 
+
+pB <- plotUMAP(sceB, 
+               colour_by="cluster_leidenB",
+               point_size=2/3) +
+  scale_color_manual(values=dayjob::paletteDiscrete(values=unique(sceB$cluster_leidenB), set="stallion")) +
+  labs(colour="B-cells") +
+  xlab("dim1") +
+  ylab("dim2") +
+  guides(x = axis, y = axis) +
+  theme(axis.line = element_line(arrow = arrow(angle=12)),
+        axis.title = element_text(hjust = 0)) +
+  scale_x_continuous(breaks = NULL) +
+  scale_y_continuous(breaks = NULL) +
+  theme(legend.position = "top", 
+        legend.title = element_text(size=10),
+        legend.text = element_text(size=8),
+        legend.spacing.x = unit(.01, 'cm'))
+
+pT <- plotUMAP(sceT, 
+               colour_by="cluster_leidenT",
+               point_size=2/3) +
+  scale_color_manual(values=dayjob::paletteDiscrete(values=unique(sceT$cluster_leidenT), set="rushmore")) +
+  labs(colour="T-cells") +
+  xlab("dim1") +
+  ylab("dim2") +
+  guides(x = axis, y = axis) +
+  theme(axis.line = element_line(arrow = arrow(angle=12)),
+        axis.title = element_text(hjust = 0)) +
+  scale_x_continuous(breaks = NULL) +
+  scale_y_continuous(breaks = NULL) +
+  theme(legend.position = "top", 
+        legend.title = element_text(size=10),
+        legend.text = element_text(size=8),
+        legend.spacing.x = unit(.01, 'cm'))
+
+
+pCLR <- ggplot(cellCountsLong, aes(x=CLR, y=celltype, fill=group)) +
+  geom_boxplot(outlier.size = 0) +
+  geom_point(position = position_dodge(width = .75)) +
+  theme_classic() +
+  ylab("Cell type")
+
+
+p1 <- cowplot::plot_grid(pB, pT, ncol=1)
+p2 <- cowplot::plot_grid(pCT, p1, nrow=1, rel_widths=c(2/3,1/3))
+p3 <- cowplot::plot_grid(p2, pComp + theme(axis.title.y = element_blank()), nrow=2)
+pAll <- cowplot::plot_grid(pCLR, p3, nrow=1, rel_widths=c(0.4, 0.6))
+
+pAll
+ggsave(pAll, file="../plots/231116_superCentenarians_compositeFigure.pdf", width=9, height=9)
+```
+
+

@@ -1,0 +1,479 @@
+---
+title: "Lupus case study: cell state analysis"
+format:
+  html:
+    toc: true
+    toc_float: true
+    html-math-method: katex
+editor: visual
+---
+
+# Import Lupus dataset
+
+```{r}
+library(limma)
+library(voomCLR)
+lupusCountsWide <- readRDS("../data/230705_popCountsWide_cellState_individualBatchID.rds")
+lupusCountsWide <- lupusCountsWide[,!colnames(lupusCountsWide) == "NA"]
+lupusCountsWide <- lupusCountsWide[!lupusCountsWide$pop_cov %in% c("African American", "Hispanic"),]
+lupusCountsWide$pop_cov <- droplevels(lupusCountsWide$pop_cov)
+lupusCountMatAll <- t(as.matrix(lupusCountsWide[,-c(1:10)]))
+lupusMetaAll <- lupusCountsWide[,1:10]
+table(lupusCountsWide$pop_cov) # paper looks at Asians and Europeans separately.
+## Asian data
+lupusCountsWideAsian <- lupusCountsWide[lupusCountsWide$pop_cov == "Asian",]
+lupusCountMatAsian <- t(as.matrix(lupusCountsWideAsian[,-c(1:10)]))
+lupusMetaAsian <- lupusCountsWideAsian[,1:10]
+## European data
+lupusCountsWideEuropean <- lupusCountsWide[lupusCountsWide$pop_cov == "European",]
+lupusCountMatEuropean <- t(as.matrix(lupusCountsWideEuropean[,-c(1:10)]))
+lupusMetaEuropean <- lupusCountsWideEuropean[,1:10]
+
+```
+
+# PCA using Aitchinson's distance
+
+## Asian ancestry
+
+```{r}
+designAsian <- model.matrix(~SLE_status + Processing_Cohort, data=lupusMetaAsian)
+v <- voomCLR(counts = lupusCountMatAsian,
+             design = designAsian,
+             lib.size = NULL,
+             plot = TRUE, 
+             span=.8)
+lupusCLRMatAsian <- v$E
+
+library(scater)
+pc <- calculatePCA(lupusCLRMatAsian,
+                  ncomponents=2,
+                  ntop=11)
+dfPCA <- cbind(data.frame(pc1=pc[,1], pc2=pc[,2]), lupusMetaAsian)
+dfPCA$Age <- as.numeric(dfPCA$Age)
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=group)) +
+  geom_point()
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=batch_cov)) +
+  geom_point()
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=Age)) +
+  geom_point()
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=Sex)) +
+  geom_point()
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=SLE_status)) +
+  geom_point()
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=Processing_Cohort)) +
+  geom_point()
+
+```
+
+## European ancestry
+
+```{r}
+designEuropean <- model.matrix(~SLE_status + Processing_Cohort, data=lupusMetaEuropean)
+v <- voomCLR(counts = lupusCountMatEuropean,
+             design = designEuropean,
+             lib.size = NULL,
+             plot = TRUE, 
+             span=.8)
+lupusCLRMatEuropean <- v$E
+
+library(scater)
+pc <- calculatePCA(lupusCLRMatEuropean,
+                  ncomponents=2,
+                  ntop=11)
+dfPCA <- cbind(data.frame(pc1=pc[,1], pc2=pc[,2]), lupusMetaEuropean)
+dfPCA$Age <- as.numeric(dfPCA$Age)
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=group)) +
+  geom_point()
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=batch_cov)) +
+  geom_point()
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=Age)) +
+  geom_point()
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=Sex)) +
+  geom_point()
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=SLE_status)) +
+  geom_point()
+
+ggplot(dfPCA, aes(x=pc1, y=pc2, col=Processing_Cohort)) +
+  geom_point()
+
+```
+
+# General SLE status
+
+## Asian ancestry
+
+###  voomCLR
+
+```{r}
+patientAsian <- lupusMetaAsian$ind_cov
+designAsian <- model.matrix(~SLE_status + Processing_Cohort, data=lupusMetaAsian)
+v <- voomCLR(counts = lupusCountMatAsian,
+             design = designAsian,
+             lib.size = NULL,
+             plot = TRUE, 
+             span=.8)
+cf <- duplicateCorrelation(v, designAsian, block=patientAsian)
+v <- voomCLR(counts = lupusCountMatAsian,
+             design = designAsian,
+             lib.size = NULL,
+             block = patientAsian,
+             correlation = cf$consensus, 
+             span=.8)
+cf <- duplicateCorrelation(v, designAsian, block=patientAsian)
+fit <- lmFit(v, designAsian,
+             block = patientAsian,
+             correlation = cf$consensus)
+fit <- lmFit(v, designAsian)
+plotBeta(fit)
+fit <- applyBiasCorrection(fit)
+fit <- eBayes(fit)
+tt <- topTable(fit, coef=2, number=Inf) # SLE vs healthy
+tt
+```
+
+### Differential abundance analysis using LinDA
+
+```{r}
+## linda
+library(MicrobiomeStat)
+library(phyloseq)
+lindaRes <- MicrobiomeStat::linda(feature.dat = lupusCountMatAsian, # rows features, cols samples
+                                    meta.dat = as.data.frame(lupusMetaAsian),
+                                    formula = '~SLE_status + Processing_Cohort + (1|ind_cov)',
+                                    feature.dat.type = 'count',
+                                    is.winsor = FALSE,
+                                    zero.handling = 'pseudo-count')
+lindaRes$output$SLE_statusSLE[order(abs(lindaRes$output$SLE_statusSLE$stat), decreasing=TRUE),]
+```
+
+### Differential abundance analysis using NB model
+
+```{r}
+library(glmmTMB)
+resDfNB <- data.frame(population=rownames(lupusCountMatAsian),
+                      diff=rep(NA,nrow(lupusCountMatAsian)),
+                      se=rep(NA,nrow(lupusCountMatAsian)),
+                      pval=rep(NA,nrow(lupusCountMatAsian)))
+for(pp in 1:nrow(lupusCountMatAsian)){
+  curY <- lupusCountMatAsian[pp,]
+  m_p <- glmmTMB(curY ~ -1 + designAsian + (1|patientAsian), 
+                 family=nbinom2(link="log"),
+                 offset = log(colSums(lupusCountMatAsian)))
+  resDfNB[pp,2:4] <- c(summary(m_p)$coef$cond["designAsianSLE_statusSLE",c(1,2,4)])
+}
+resDfNB$padj <- p.adjust(resDfNB$pval, "fdr")
+
+resDfNB[order(abs(resDfNB$pval)),]
+```
+
+### Compare methods
+
+```{r}
+allPopulations <- rownames(lupusCountMatAsian)
+nPopulations <- nrow(lupusCountMatAsian)
+allMethods <- c("voomCLR", "LinDA", "NBGLM")
+nMethods <- length(allMethods)
+resDfAll <- data.frame(population = rep(allPopulations, nMethods),
+                       method = rep(allMethods, each=nPopulations),
+                       log2FC = c(tt[allPopulations,]$logFC,
+                                      lindaRes$output$SLE_statusSLE[allPopulations,]$log2FoldChange,
+                                      log2(exp(resDfNB$diff))),
+                       padj = c(tt[allPopulations,]$adj.P.Val,
+                                      lindaRes$output$SLE_statusSLE[allPopulations,]$padj,
+                                      log2(exp(resDfNB$padj)))
+                       
+)
+resDfAll$DA <- resDfAll$padj <= 0.05
+
+ggplot(resDfAll, 
+       aes(x=population, y=method, color=log2FC, size=DA)) +
+  geom_point()+
+  facet_grid(~population, scales = "free_x", space = "free")+
+  theme_light()+
+  scale_color_gradient2(low= "blue", mid="gray", high= "red") +
+  theme(axis.text.x = element_text(angle=45, hjust = 1, vjust = 1),
+        strip.text.x = element_text(size=14, angle=90, hjust = 1, vjust = 1))
+
+```
+
+## European ancestry
+
+###  voomCLR
+
+```{r}
+patientEuropean <- lupusMetaEuropean$ind_cov
+designEuropean <- model.matrix(~SLE_status + Processing_Cohort, data=lupusMetaEuropean)
+v <- voomCLR(counts = lupusCountMatEuropean,
+             design = designEuropean,
+             lib.size = NULL,
+             plot = TRUE, 
+             span=.8)
+cf <- duplicateCorrelation(v, designEuropean, block=patientEuropean)
+v <- voomCLR(counts = lupusCountMatEuropean,
+             design = designEuropean,
+             lib.size = NULL,
+             block = patientEuropean,
+             correlation = cf$consensus, 
+             span=.8)
+cf <- duplicateCorrelation(v, designEuropean, block=patientEuropean)
+fit <- lmFit(v, designEuropean,
+             block = patientEuropean,
+             correlation = cf$consensus)
+fit <- lmFit(v, designEuropean)
+plotBeta(fit)
+fit <- applyBiasCorrection(fit)
+fit <- eBayes(fit)
+tt <- topTable(fit, coef=2, number=Inf) # SLE vs healthy
+tt
+```
+
+### Differential abundance analysis using LinDA
+
+```{r}
+## linda
+library(MicrobiomeStat)
+library(phyloseq)
+lindaRes <- MicrobiomeStat::linda(feature.dat = lupusCountMatEuropean, # rows features, cols samples
+                                    meta.dat = as.data.frame(lupusMetaEuropean),
+                                    formula = '~SLE_status + Processing_Cohort + (1|ind_cov)',
+                                    feature.dat.type = 'count',
+                                    is.winsor = FALSE,
+                                    zero.handling = 'pseudo-count')
+lindaRes$output$SLE_statusSLE[order(abs(lindaRes$output$SLE_statusSLE$stat), decreasing=TRUE),]
+```
+
+### Differential abundance analysis using NB model
+
+```{r}
+library(glmmTMB)
+resDfNB <- data.frame(population=rownames(lupusCountMatEuropean),
+                      diff=rep(NA,nrow(lupusCountMatEuropean)),
+                      se=rep(NA,nrow(lupusCountMatEuropean)),
+                      pval=rep(NA,nrow(lupusCountMatEuropean)))
+for(pp in 1:nrow(lupusCountMatEuropean)){
+  curY <- lupusCountMatEuropean[pp,]
+  m_p <- glmmTMB(curY ~ -1 + designEuropean + (1|patientEuropean), 
+                 family=nbinom2(link="log"),
+                 offset = log(colSums(lupusCountMatEuropean)))
+  resDfNB[pp,2:4] <- c(summary(m_p)$coef$cond["designEuropeanSLE_statusSLE",c(1,2,4)])
+}
+resDfNB$padj <- p.adjust(resDfNB$pval, "fdr")
+
+resDfNB[order(abs(resDfNB$pval)),]
+```
+
+### Compare methods
+
+```{r}
+allPopulations <- rownames(lupusCountMatEuropean)
+nPopulations <- nrow(lupusCountMatEuropean)
+allMethods <- c("voomCLR", "LinDA", "NBGLM")
+nMethods <- length(allMethods)
+resDfAll <- data.frame(population = rep(allPopulations, nMethods),
+                       method = rep(allMethods, each=nPopulations),
+                       log2FC = c(tt[allPopulations,]$logFC,
+                                      lindaRes$output$SLE_statusSLE[allPopulations,]$log2FoldChange,
+                                      log2(exp(resDfNB$diff))),
+                       padj = c(tt[allPopulations,]$adj.P.Val,
+                                      lindaRes$output$SLE_statusSLE[allPopulations,]$padj,
+                                      log2(exp(resDfNB$padj)))
+                       
+)
+resDfAll$DA <- resDfAll$padj <= 0.05
+
+ggplot(resDfAll, 
+       aes(x=population, y=method, color=log2FC, size=DA)) +
+  geom_point()+
+  facet_grid(~population, scales = "free_x", space = "free")+
+  theme_light()+
+  scale_color_gradient2(low= "blue", mid="gray", high= "red") +
+  theme(axis.text.x = element_text(angle=45, hjust = 1, vjust = 1),
+        strip.text.x = element_text(size=14, angle=90, hjust = 1, vjust = 1))
+
+```
+
+# Interaction between ancestry and lupus status
+
+
+###  voomCLR
+
+```{r}
+patientAll <- lupusMetaAll$ind_cov
+designAll <- model.matrix(~SLE_status*pop_cov + Processing_Cohort, data=lupusMetaAll)
+v <- voomCLR(counts = lupusCountMatAll,
+             design = designAll,
+             lib.size = NULL,
+             plot = TRUE, 
+             span=.8)
+cf <- duplicateCorrelation(v, designAll, block=patientAll)
+v <- voomCLR(counts = lupusCountMatAll,
+             design = designAll,
+             lib.size = NULL,
+             block = patientAll,
+             correlation = cf$consensus, 
+             span=.8)
+cf <- duplicateCorrelation(v, designAll, block=patientAll)
+fit <- lmFit(v, designAll,
+             block = patientAll,
+             correlation = cf$consensus)
+fit <- lmFit(v, designAll)
+plotBeta(fit)
+fit <- applyBiasCorrection(fit)
+fit <- eBayes(fit)
+tt <- topTable(fit, coef="SLE_statusSLE:pop_covEuropean", number=Inf) 
+tt
+```
+
+### Differential abundance analysis using LinDA
+
+```{r}
+## linda
+library(MicrobiomeStat)
+library(phyloseq)
+lindaRes <- MicrobiomeStat::linda(feature.dat = lupusCountMatAll, # rows features, cols samples
+                                    meta.dat = as.data.frame(lupusMetaAll),
+                                    formula = '~SLE_status*pop_cov + Processing_Cohort + (1|ind_cov)',
+                                    feature.dat.type = 'count',
+                                    is.winsor = FALSE,
+                                    zero.handling = 'pseudo-count')
+lindaRes$output$`SLE_statusSLE:pop_covEuropean`[order(abs(lindaRes$output$`SLE_statusSLE:pop_covEuropean`$stat), decreasing=TRUE),]
+```
+
+### Differential abundance analysis using NB model
+
+```{r}
+library(glmmTMB)
+resDfNB <- data.frame(population=rownames(lupusCountMatAll),
+                      diff=rep(NA,nrow(lupusCountMatAll)),
+                      se=rep(NA,nrow(lupusCountMatAll)),
+                      pval=rep(NA,nrow(lupusCountMatAll)))
+for(pp in 1:nrow(lupusCountMatAll)){
+  curY <- lupusCountMatAll[pp,]
+  m_p <- glmmTMB(curY ~ -1 + designAll + (1|patientAll), 
+                 family=nbinom2(link="log"),
+                 offset = log(colSums(lupusCountMatAll)))
+  resDfNB[pp,2:4] <- c(summary(m_p)$coef$cond["designAllSLE_statusSLE:pop_covEuropean",c(1,2,4)])
+}
+resDfNB$padj <- p.adjust(resDfNB$pval, "fdr")
+
+resDfNB[order(abs(resDfNB$pval)),]
+```
+
+### Compare methods
+
+```{r}
+allPopulations <- rownames(lupusCountMatAll)
+nPopulations <- nrow(lupusCountMatAll)
+allMethods <- c("voomCLR", "LinDA", "NBGLM")
+nMethods <- length(allMethods)
+resDfAll <- data.frame(population = rep(allPopulations, nMethods),
+                       method = rep(allMethods, each=nPopulations),
+                       log2FC = c(tt[allPopulations,]$logFC,
+                                      lindaRes$output$`SLE_statusSLE:pop_covEuropean`[allPopulations,]$log2FoldChange,
+                                      log2(exp(resDfNB$diff))),
+                       padj = c(tt[allPopulations,]$adj.P.Val,
+                                      lindaRes$output$`SLE_statusSLE:pop_covEuropean`[allPopulations,]$padj,
+                                      log2(exp(resDfNB$padj)))
+                       
+)
+resDfAll$DA <- resDfAll$padj <= 0.05
+
+ggplot(resDfAll, 
+       aes(x=population, y=method, color=log2FC, size=DA)) +
+  geom_point()+
+  facet_grid(~population, scales = "free_x", space = "free")+
+  theme_light()+
+  scale_color_gradient2(low= "blue", mid="gray", high= "red") +
+  theme(axis.text.x = element_text(angle=45, hjust = 1, vjust = 1),
+        strip.text.x = element_text(size=14, angle=90, hjust = 1, vjust = 1))
+
+```
+
+# Visualization {.tabset .tabset-pills}
+
+```{r}
+library(tidyverse)
+lupusCountsLong <- readRDS("../data/230705_popCountsLong_individualBatchID.rds")
+lupusCountsLong <- lupusCountsLong[lupusCountsLong$pop_cov %in% c("Asian", "European"),]
+
+lupusCountsLong <- lupusCountsLong %>% 
+  group_by(patient, group) %>%
+  mutate(totalCells = sum(nCells),
+         nCellTypes = n(),
+         geoMean = prod(nCells+1)^(1/nCellTypes),
+         CLR = log((nCells+1) / geoMean )) %>%
+  ungroup() %>%
+  mutate(fractionCells = nCells / totalCells)
+```
+
+
+## Fraction {.tabset .tabset-pills}
+
+### Both ancestries
+
+```{r}
+ggplot(lupusCountsLong, aes(x=celltype, y=fractionCells, fill=SLE_status)) +
+  geom_boxplot() +
+  theme_classic()
+```
+
+### Asian
+
+```{r}
+ggplot(lupusCountsLong[lupusCountsLong$pop_cov == "Asian",], aes(x=celltype, y=fractionCells, fill=SLE_status)) +
+  geom_boxplot() +
+  theme_classic() +
+  ggtitle("Asian")
+```
+
+### European
+
+```{r}
+ggplot(lupusCountsLong[lupusCountsLong$pop_cov == "European",], aes(x=celltype, y=fractionCells, fill=SLE_status)) +
+  geom_boxplot() +
+  theme_classic() +
+  ggtitle("European")
+``` 
+
+
+## CLR {.tabset .tabset-pills}
+
+### Both ancestries
+
+```{r}
+ggplot(lupusCountsLong, aes(x=celltype, y=CLR, fill=SLE_status)) +
+  geom_boxplot() +
+  theme_classic()
+```
+
+### Asian
+
+```{r}
+ggplot(lupusCountsLong[lupusCountsLong$pop_cov == "Asian",], aes(x=celltype, y=CLR, fill=SLE_status)) +
+  geom_boxplot() +
+  theme_classic() +
+  ggtitle("Asian")
+```
+
+### European
+
+```{r}
+ggplot(lupusCountsLong[lupusCountsLong$pop_cov == "European",], aes(x=celltype, y=CLR, fill=SLE_status)) +
+  geom_boxplot() +
+  theme_classic() +
+  ggtitle("European")
+```
+
+
+

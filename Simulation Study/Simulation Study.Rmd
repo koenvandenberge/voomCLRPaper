@@ -1,0 +1,2437 @@
+---
+title: "Simulation study scripts"
+author: "Alemu Takele Assefa, Bie Verbist, and Koen Van den Berge "
+format:
+  html:
+    html-math-method: katex
+    embed-resources: true
+    toc: true
+    toc-location: left
+editor: visual
+---
+
+```{r setup, message=FALSE, warning=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+# required packages
+library(tidyverse)
+library(dplyr) 
+library(ggplot2)
+library(iCOBRA) 
+library(BiocParallel)
+library(compositions)
+library(iCOBRA) 
+```
+
+
+# Process source data
+
+## Lupus
+
+```{r}
+# Load the dataset and remove any grouping
+lupsPoplCount <- readRDS("Data/lupsPoplCountV2_LongIndividualBatchID.rds") %>% ungroup()
+
+# Subset the data to include only the cohort with Processing_Cohort equal to "4.0"
+lupsPoplCountCh4 <- lupsPoplCount %>%
+  subset(Processing_Cohort == "4.0")
+
+# Transform the data: 
+# 1. Pivot the data to a wider format with 'patient' and 'SLE_status' as ID columns, 
+#    and 'celltype' as column names with values from 'nCells'
+# 2. Replace NA values with 0. 
+# 3. Pivot the data back to a longer format with 'celltype' and 'nCells' columns
+# 4. Rename 'SLE_status' column to 'group'
+lupsPoplCountCh4_2 <- lupsPoplCountCh4 %>%  
+  pivot_wider(id_cols = c(patient, SLE_status), 
+              names_from = celltype, values_from = nCells) %>%
+  replace(is.na(.), 0) %>% 
+  pivot_longer(cols = unique(lupsPoplCountCh4$celltype),
+               names_to = "celltype", values_to = "nCells") %>%
+  dplyr::rename(group = SLE_status)
+
+
+# Group the data by 'patient' and calculate the Centered Log-Ratio (CLR) transformation of 'nCells'
+lupsPoplCountCh4_2 <- lupsPoplCountCh4_2 %>%
+  group_by(patient) %>%
+  mutate(CLR = as.numeric(clr(nCells)))
+
+# transform  data to wider format
+lupsPoplCountCh4_2_wide <- lupsPoplCountCh4_2 %>%
+  dplyr::select(patient, group, celltype, nCells) %>%
+  pivot_wider(id_cols = c(patient, group), names_from = celltype, values_from = nCells) %>%
+  data.frame()
+rownames(lupsPoplCountCh4_2_wide) <- lupsPoplCountCh4_2_wide$patient
+```
+
+## Breast Atlas
+
+```{r}
+# processed data
+BRC.data <- readRDS("Data/breastAtlasData/cellcountMatrixStromalWT.rds")
+```
+
+
+# Run simulations
+## Non-parametric simulation
+ 
+```{r} 
+# subset data from healthy group of Lupus study to use it as a baseline for the non-parametric simulation
+Xhealthy <- lupsPoplCountCh4_2_wide[lupsPoplCountCh4_2_wide$group == "Healthy", -c(1:2)]
+ 
+  
+# load simulation function
+source("R/simCP_v4.R")
+
+# load model function
+source("R/runModels.R")
+
+# the number of simulations
+N.sim <- 250
+
+# models/methods to be evalautes
+models <- c("NBGLM", "NBGLM_TMB", "linDA", "LMclr", "voomCLR", "edgeR", "DESeq2", "limmaVoom", 
+            "NBGLM_gmOffset", "propeller_logit", "propeller_asin",
+            "voomCLR_woB", "voomCLR_woH",  "voomCLR_woB_woH", 
+            "voomCLR_woE", "voomCLR_woB_woE",  "voomCLR_woE_woH", "voomCLR_woB_woH_woE",
+            "voomCLR_PoissonAnalyticalVarCalc", "voomCLR_NBAnalyticalVarCalc", 
+           "voomCLR_bootNonParametric", "voomCLR_bootParametric",
+           "voomCLR_NPboot_NBweight", "voomCLR_NPboot_PoisWeight",
+           "voomCLR_Pboot_NBweight", "voomCLR_Pboot_PoisWeight",
+           "dcats")
+
+# run simulation for 5, 10 and 20 sample sizes iteratively
+
+for(nn in c(5, 10, 20)){
+  cat("n = ", nn, "\n")
+  
+  
+  # ---  lowDiffWeighted.random differences -----
+  simDat.resList_LDWrandom_nn <- bplapply(1:N.sim, function(itr){  
+    # simulate data
+    seed = round(runif(1, 1, 1e5))  
+    simData <- simCP(X= Xhealthy,  frac.daPop = 0.2, sample_size = rep(nn, 2),
+                     rltv.effect = "lowDiffWeighted.random", seed=seed)
+    
+    # apply models 
+   resAll <- lapply(models, function(mdl){
+     simInput <- list(Y=simData$X, group=simData$group) 
+     res.sim  <- runMoldel(dat = simInput, model = mdl)  
+     res.sim
+    }) %>% bind_rows()  %>%
+     mutate(trueDA = population %in% simData$DApops[,1],
+            n = paste0("n = ", nn), diffr_range = "lowDiffWeighted.random", 
+            sim_itr=itr, seed=seed) 
+    
+    resAll
+  }, BPPARAM = BiocParallel::MulticoreParam(workers = 6, progressbar = TRUE)) 
+  
+  # # ---  highDiffWeighted.random differences -----
+  simDat.resList_HDWrandom_nn <- bplapply(1:N.sim, function(itr){
+    # simulate data
+    seed = round(runif(1, 1, 1e5))
+    simData <- simCP(X= Xhealthy,  frac.daPop = 0.2, sample_size = rep(nn, 2),
+                     rltv.effect = "highDiffWeighted.random", seed=seed)
+
+    # apply models
+   resAll <- lapply(models, function(mdl){
+     simInput <- list(Y=simData$X, group=simData$group)
+     res.sim  <- runMoldel(dat = simInput, model = mdl)
+     res.sim
+    }) %>% bind_rows()  %>%
+     mutate(trueDA = population %in% simData$DApops[,1],
+            n = paste0("n = ", nn), diffr_range = "highDiffWeighted.random",
+            sim_itr=itr, seed=seed)
+
+    resAll
+  }, BPPARAM = BiocParallel::MulticoreParam(workers = 6, progressbar = TRUE))
+  
+  # # # ---  random differences -----
+  # simDat.resList_random_nn <- bplapply(1:N.sim, function(itr){
+  #   # simulate data
+  #   seed = round(runif(1, 1, 1e5))
+  #   simData <- simCP(X= Xhealthy,  frac.daPop = 0.2, sample_size = rep(nn, 2),
+  #                    rltv.effect = "random", seed=seed)
+  # 
+  #   # apply models
+  #  resAll <- lapply(models, function(mdl){
+  #    simInput <- list(Y=simData$X, group=simData$group)
+  #    res.sim  <- runMoldel(dat = simInput, model = mdl)
+  #    res.sim
+  #   }) %>% bind_rows()  %>%
+  #    mutate(trueDA = population %in% simData$DApops[,1],
+  #           n = paste0("n = ", nn), diffr_range = "random",
+  #           sim_itr=itr, seed=seed)
+  # 
+  #   resAll
+  # }, BPPARAM = BiocParallel::MulticoreParam(workers = 6, progressbar = TRUE))
+
+
+  
+  simDat.resList_nn <- bind_rows(simDat.resList_random_nn,
+                                 simDat.resList_LDWrandom_nn,
+                                 simDat.resList_HDWrandom_nn)
+ 
+saveRDS(simDat.resList_nn, 
+        paste0(".../results/nonparametricSimulation/simDat.resList_n", nn, ".rds"))
+} 
+```
+
+
+## Parametric Simulation
+
+### 11 populations
+
+
+```{r}
+# subset data from healthy group of Lupus study to use it as a baseline for the non-parametric simulation
+Xhealthy <- lupsPoplCountCh4_2_wide[lupsPoplCountCh4_2_wide$group == "Healthy", -c(1:2)]
+ 
+  
+# load parametric simulation function
+source("R/DM_simCP_V2.R")
+
+# load model function
+source("R/runModels.R")
+
+# the number of simulations
+N.sim <- 250
+  
+# models to be evaluated
+models <- c("NBGLM", "NBGLM_TMB", "linDA", "LMclr", "voomCLR", "edgeR", "DESeq2", "limmaVoom", 
+            "NBGLM_gmOffset", "propeller_logit", "propeller_asin",
+            "voomCLR_woB", "voomCLR_woH",  "voomCLR_woB_woH", 
+            "voomCLR_woE", "voomCLR_woB_woE",  "voomCLR_woE_woH", "voomCLR_woB_woH_woE",
+            "voomCLR_PoissonAnalyticalVarCalc", "voomCLR_NBAnalyticalVarCalc", 
+           "voomCLR_bootNonParametric", "voomCLR_bootParametric",
+           "voomCLR_NPboot_NBweight", "voomCLR_NPboot_PoisWeight",
+           "voomCLR_Pboot_NBweight", "voomCLR_Pboot_PoisWeight",
+           "dcats")
+
+# run simulation for 5, 10 and 20 sample sizes iteratively
+for(nn in c(5, 10, 20)){
+  cat("n = ", nn, "\n")
+  
+  # ---  low variability -----
+  simDat.resList_nn_lowVar <- bplapply(1:N.sim, function(itr){  
+    # simulate data
+    seed = round(runif(1, 1, 1e5)) 
+    var_scale = 1.5
+    
+    simData <- DM_simCP(sample_size = c(nn, nn), 
+                        K = ncol(Xhealthy), frac.daPop = 0.2,  
+                   parent.size = rowSums(Xhealthy)[sample(nrow(Xhealthy), nn*2)], 
+                   scale.dirichlet = var_scale, sd.intercept=2,  seed = seed)
+    
+    # apply models 
+   resAll <- lapply(models, function(mdl){
+     simInput <- list(Y=simData$X, group=simData$group) 
+     res.sim <- try(runMoldel(dat = simInput, model = mdl), silent = TRUE) 
+     if(class(res.sim)[1] != "try-error"){
+       res.sim$trueDA <- res.sim$population %in% simData$DApops[,1]
+      res.sim
+     }
+     
+    }) %>% bind_rows() %>%
+     mutate(n = paste0("n = ", nn), var_scale=var_scale, 
+            diffr_range = "mix",  sim_itr=itr, seed=seed) 
+    
+    resAll
+  }, BPPARAM = BiocParallel::MulticoreParam(workers = 6, progressbar = TRUE)) 
+   
+  # ---  medium variability -----
+  simDat.resList_nn_medVar <- bplapply(1:N.sim, function(itr){  
+    # simulate data
+    seed = round(runif(1, 1, 1e5)) 
+    var_scale = 1
+    
+    simData <- DM_simCP(sample_size = c(nn, nn), 
+                        K = ncol(Xhealthy), frac.daPop = 0.2, 
+                   parent.size = rowSums(Xhealthy)[sample(nrow(Xhealthy), nn*2)], 
+                   scale.dirichlet = var_scale,  sd.intercept=2,  seed = seed)
+    
+    # apply models 
+   resAll <- lapply(models, function(mdl){
+     simInput <- list(Y=simData$X, group=simData$group) 
+     res.sim <- try(runMoldel(dat = simInput, model = mdl), silent = TRUE) 
+     if(class(res.sim)[1] != "try-error"){
+       res.sim$trueDA <- res.sim$population %in% simData$DApops[,1]
+      res.sim
+     }
+    }) %>% bind_rows() %>%
+     mutate(n = paste0("n = ", nn), var_scale=var_scale, diffr_range = "mix",  sim_itr=itr, seed=seed) 
+    
+    resAll
+  }, BPPARAM = BiocParallel::MulticoreParam(workers = 6, progressbar = TRUE, )) 
+  
+   # --- large variability -----
+  simDat.resList_nn_largeVar <- bplapply(1:N.sim, function(itr){  
+    # simulate data
+    seed = round(runif(1, 1, 1e5))  
+    var_scale = 0.25
+    
+    simData <- DM_simCP(sample_size = c(nn, nn), 
+                        K = ncol(Xhealthy), frac.daPop = 0.2, 
+                   parent.size = rowSums(Xhealthy)[sample(nrow(Xhealthy), nn*2)], 
+                   scale.dirichlet = var_scale, sd.intercept=2,   seed = seed)
+    
+    # apply models 
+   resAll <- lapply(models, function(mdl){
+     print(mdl)
+     simInput <- list(Y=simData$X, group=simData$group) 
+     res.sim <- try(runMoldel(dat = simInput, model = mdl), silent = TRUE) 
+     if(class(res.sim)[1] != "try-error"){
+       res.sim$trueDA <- res.sim$population %in% simData$DApops[,1]
+      res.sim
+     }
+    }) %>% bind_rows() %>%
+     mutate(n = paste0("n = ", nn), var_scale=var_scale, diffr_range = "mix",  sim_itr=itr, seed=seed) 
+    
+    resAll
+  }, BPPARAM = BiocParallel::MulticoreParam(workers = 6, progressbar = TRUE)) 
+
+  simDat.resList_nn <- bind_rows(bind_rows(simDat.resList_nn_lowVar), 
+                             bind_rows(simDat.resList_nn_medVar), 
+                             bind_rows(simDat.resList_nn_largeVar))
+saveRDS(simDat.resList_nn, 
+        paste0(".../results/parametricSimulation/K11/simDat.resList_n", nn, ".rds"))
+}
+```
+
+### Higher number of populations
+
+```{r, eval=FALSE}
+# subset data from healthy group of Lupus study to use it as a baseline for the non-parametric simulation
+Xhealthy <- lupsPoplCountCh4_2_wide[lupsPoplCountCh4_2_wide$group == "Healthy", -c(1:2)]
+ 
+  
+# load parametric simulation function
+source("R/DM_simCP_V2.R")
+
+# load model function
+source("R/runModels.R")
+
+# the number of simulations
+N.sim <- 250
+  
+# models to be evaluated
+models <- c("NBGLM", "NBGLM_TMB", "linDA", "LMclr", "voomCLR", "edgeR", "DESeq2", "limmaVoom", 
+            "NBGLM_gmOffset", "propeller_logit", "propeller_asin",
+            "voomCLR_woB", "voomCLR_woH",  "voomCLR_woB_woH", 
+            "voomCLR_woE", "voomCLR_woB_woE",  "voomCLR_woE_woH", "voomCLR_woB_woH_woE",
+            "voomCLR_PoissonAnalyticalVarCalc", "voomCLR_NBAnalyticalVarCalc", 
+           "voomCLR_bootNonParametric", "voomCLR_bootParametric",
+           "voomCLR_NPboot_NBweight", "voomCLR_NPboot_PoisWeight",
+           "voomCLR_Pboot_NBweight", "voomCLR_Pboot_PoisWeight",
+           "dcats")
+
+# run simulation for 5, 10 and 20 sample sizes iteratively
+for(nn in c(5, 10, 20)){
+  cat("n = ", nn, "\n")
+  
+  # ---  K=5-----
+  simDat.resList_nn_5K <- bplapply(1:N.sim, function(itr){  
+    print(itr)
+    # simulate data
+    seed = round(runif(1, 1, 1e5)) 
+    var_scale = 1
+    K = 5
+    simData <- DM_simCP(sample_size = c(nn, nn),  K = K, frac.daPop = 0.2,  
+                   parent.size = (K/11)*rowSums(Xhealthy)[sample(nrow(Xhealthy), nn*2)], 
+                   scale.dirichlet = var_scale, sd.intercept=2,  seed = seed)
+    
+    # apply models 
+   resAll <- lapply(models, function(mdl){
+     simInput <- list(Y=simData$X, group=simData$group) 
+     res.sim <- try(runMoldel(dat = simInput, model = mdl), silent = TRUE)
+     if(class(res.sim) == "try-error"){
+       res.sim = data.frame(population = colnames(simInput$Y), 
+                            coef.est=NA, test.stat =NA, pval=1 ,  padj=1,  method=mdl)
+     }
+     res.sim$trueDA <- res.sim$population %in% simData$DApops[,1]
+     res.sim
+    }) %>% bind_rows() %>%
+     mutate(n = paste0("n = ", nn), var_scale=var_scale, K=K,
+            diffr_range = "mix",  sim_itr=itr, seed=seed) 
+    
+    resAll
+  }, 
+  BPPARAM = BiocParallel::MulticoreParam(workers = 6, progressbar = TRUE)) 
+  
+  
+  # ---  K=10-----
+  simDat.resList_nn_10K <- bplapply(1:N.sim, function(itr){  
+    # simulate data
+    seed = round(runif(1, 1, 1e5)) 
+    var_scale = 1
+    K = 10
+    simData <- DM_simCP(sample_size = c(nn, nn),  K = K, frac.daPop = 0.2,  
+                   parent.size = (K/11)*rowSums(Xhealthy)[sample(nrow(Xhealthy), nn*2)], 
+                   scale.dirichlet = var_scale, sd.intercept=2,  seed = seed)
+    
+    # apply models 
+   resAll <- lapply(models, function(mdl){
+     #print(mdl)
+     simInput <- list(Y=simData$X, group=simData$group) 
+     res.sim <- runMoldel(dat = simInput, model = mdl) 
+     res.sim$trueDA <- res.sim$population %in% simData$DApops[,1]
+     res.sim
+    }) %>% bind_rows() %>%
+     mutate(n = paste0("n = ", nn), var_scale=var_scale, K=K,
+            diffr_range = "mix",  sim_itr=itr, seed=seed) 
+    
+    resAll
+  }, 
+  BPPARAM = BiocParallel::MulticoreParam(workers = 6, progressbar = TRUE)) 
+   
+  # ---  K=20 -----
+  simDat.resList_nn_20K <- bplapply(1:N.sim, function(itr){  
+    # simulate data
+    seed = round(runif(1, 1, 1e5)) 
+    var_scale = 1
+    K = 20
+    
+    simData <- DM_simCP(sample_size = c(nn, nn),  K = K, frac.daPop = 0.2, 
+                   parent.size = (K/11)*rowSums(Xhealthy)[sample(nrow(Xhealthy), nn*2)], 
+                   scale.dirichlet = var_scale,  sd.intercept=2,  seed = seed)
+    
+    # apply models 
+   resAll <- lapply(models, function(mdl){
+     simInput <- list(Y=simData$X, group=simData$group) 
+     res.sim <- runMoldel(dat = simInput, model = mdl) 
+     res.sim$trueDA <- res.sim$population %in% simData$DApops[,1]
+     res.sim
+    }) %>% bind_rows() %>%
+     mutate(n = paste0("n = ", nn), var_scale=var_scale,  K=K,
+            diffr_range = "mix",  sim_itr=itr, seed=seed) 
+    
+    resAll
+  }, 
+  BPPARAM = BiocParallel::MulticoreParam(workers = 6, progressbar = TRUE, )) 
+  
+   # --- K=50 -----
+  simDat.resList_nn_50K <- bplapply(1:N.sim, function(itr){  
+    # simulate data
+    seed = round(runif(1, 1, 1e5))  
+    var_scale = 1
+    K = 50
+    
+    simData <- DM_simCP(sample_size = c(nn, nn), K = K, frac.daPop = 0.2, 
+                   parent.size = (K/11)*rowSums(Xhealthy)[sample(nrow(Xhealthy), nn*2)], 
+                   scale.dirichlet = var_scale, sd.intercept=2,   seed = seed)
+    
+    # apply models 
+   resAll <- lapply(models, function(mdl){
+     print(mdl)
+     simInput <- list(Y=simData$X, group=simData$group) 
+     res.sim <- runMoldel(dat = simInput, model = mdl) 
+     res.sim$trueDA <- res.sim$population %in% simData$DApops[,1]
+     res.sim
+    }) %>% bind_rows() %>%
+     mutate(n = paste0("n = ", nn), var_scale=var_scale,  K=K,
+            diffr_range = "mix",  sim_itr=itr, seed=seed) 
+    
+    resAll
+  }, 
+  BPPARAM = BiocParallel::MulticoreParam(workers = 6, progressbar = TRUE)) 
+  
+  # --- K=100 -----
+  simDat.resList_nn_100K <- bplapply(1:N.sim, function(itr){  
+    # simulate data
+    seed = round(runif(1, 1, 1e5))  
+    var_scale = 1
+    K = 100
+    
+    simData <- DM_simCP(sample_size = c(nn, nn), K = K, frac.daPop = 0.2, 
+                   parent.size = (K/11)*rowSums(Xhealthy)[sample(nrow(Xhealthy), nn*2)], 
+                   scale.dirichlet = var_scale, sd.intercept=2,   seed = seed)
+    
+    # apply models 
+   resAll <- lapply(models, function(mdl){
+     print(mdl)
+     simInput <- list(Y=simData$X, group=simData$group) 
+     res.sim <- runMoldel(dat = simInput, model = mdl) 
+     res.sim$trueDA <- res.sim$population %in% simData$DApops[,1]
+     res.sim
+    }) %>% bind_rows() %>%
+     mutate(n = paste0("n = ", nn), var_scale=var_scale,  K=K,
+            diffr_range = "mix",  sim_itr=itr, seed=seed) 
+    
+    resAll
+  }, 
+  BPPARAM = BiocParallel::MulticoreParam(workers = 6, progressbar = TRUE)) 
+
+  simDat.resList_nn <- bind_rows(bind_rows(simDat.resList_nn_5K), 
+                                 bind_rows(simDat.resList_nn_10K), 
+                             bind_rows(simDat.resList_nn_20K), 
+                             bind_rows(simDat.resList_nn_50K),
+                             bind_rows(simDat.resList_nn_100K))
+saveRDS(simDat.resList_nn, 
+        paste0(".../results/parametricSimulation/multipleK/simDat.resList_n", nn, "_b.rds"))
+} 
+```
+
+# Evalute simulated data
+
+## Non-parametric simulation
+```{r} 
+source("R/simCP_v4.R")
+# subset data from healthy group of Lupus study to use it as a baseline for the non-parametric simulation
+Xhealthy <- lupsPoplCountCh4_2_wide[lupsPoplCountCh4_2_wide$group == "Healthy", -c(1:2)]
+ 
+# simulate data with 22 samples per group,  11 cell populations, 20% DA populations
+simData_eval <- simCP(X= Xhealthy, frac.daPop = 0.2, sample_size = rep(22, 2),
+                     rltv.effect = "lowDiffWeighted.random", seed=5555)
+
+Xsrc <- Xhealthy %>%
+  mutate(subjectID=rownames(Xhealthy)) %>%
+  pivot_longer(cols=colnames(Xhealthy), names_to = "ppls", values_to = "count") %>%
+  group_by(subjectID) %>%
+  mutate(clr = as.vector(clr(count)), frac=count/sum(count)) %>%
+  ungroup() %>%
+  mutate(group=0, type="real data")
+ 
+Xsim <- cbind(group=simData_eval$group, simData_eval$X) %>% 
+  mutate(subjectID=rownames(simData_eval$X)) %>%
+  pivot_longer(cols=colnames(simData_eval$X), names_to = "ppls", values_to = "count") %>%
+  group_by(subjectID) %>%
+ mutate(clr = as.vector(clr(count)), frac=count/sum(count)) %>%
+  ungroup() %>%
+  mutate(type="simulated data")
+
+allData_lupus <- bind_rows(Xsrc, Xsim) %>%
+  mutate(datatype.group =paste(type, "(group =", group, ")"))
+allData_lupus$DApop <- ifelse(allData_lupus$ppls %in% simData_eval$DApops[,1], TRUE, FALSE)
+```
+
+The following figure compares the distribution of the parent size (total number of cells per samples) in the real and simulated data.
+
+```{r, fig.height=5, fig.width=10}
+parentsize_lupusSim <- allData_lupus %>%  
+  group_by(type, subjectID) %>%
+  summarise(N=sum(count), n=n())
+
+distr.np =ggplot(parentsize_lupusSim, 
+       aes(x=N, fill=type, color=type))+
+  geom_histogram(alpha=0.5, show.legend = FALSE)+
+  facet_grid(~type)+
+  theme_bw() +
+  labs(x="Total number of cells")
+
+distr.np 
+# png("results/Figures/supplementary figures/nonparamSimDistrN.png", width = 15, height = 6, units = "cm", res = 150)
+# gp
+# dev.off()
+``` 
+
+The following figure compares the distribution of the parent size (total number of cells per samples) in the real and simulated data.
+
+```{r, fig.height=5, fig.width=10}
+parentsize_lupusSim <- allData_lupus %>%  
+  group_by(type, subjectID) %>%
+  summarise(N=sum(count), n=n())
+
+distr.np =ggplot(parentsize_lupusSim, 
+       aes(x=N, fill=type, color=type))+
+  geom_histogram(alpha=0.5, show.legend = FALSE)+
+  facet_grid(~type)+
+  theme_bw() +
+  labs(x="Total number of cells")
+
+distr.np 
+# png("results/Figures/supplementary figures/nonparamSimDistrN.png", width = 15, height = 6, units = "cm", res = 150)
+# gp
+# dev.off()
+```
+
+The following figures compares the distribution of counts of cell populations in the real data (lupus healthy group) and simulated data (group 0 and 1).
+
+```{r, fig.width=12, fig.height=5}
+gp1 = ggplot(allData_lupus, 
+       aes(x=ppls, y=count, color=datatype.group))+
+  geom_violin(aes(fill=datatype.group), alpha=0.2, show.legend = FALSE,
+              position = position_dodge(width = 0.5), scale = "width")+
+  geom_point(position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.5),
+             size=0.5)+
+  geom_text(data=allData_lupus %>% subset(DApop),
+            aes(y=5000, group=1), label="*", 
+            color="black", size=12, show.legend = FALSE)+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))+
+  labs(x="cell populations", y="cell count", 
+       color="data type (sample group)",
+       caption = "* indicate the cell population is set to be differentially abundant between the two groups") +
+  guides(color=guide_legend(override.aes = list(size=5)))
+
+gp1
+# png("results/Figures/supplementary figures/nonparamSimDistrFrac.png", width = 25, height = 10, units = "cm", res = 150)
+# gp
+# dev.off()
+```
+
+The following figures compares the distribution of proportions of cell populations in the real data (lupus healthy group) and simulated data (group 0 and 1).
+
+```{r, fig.width=12, fig.height=5}
+gp2 = ggplot(allData_lupus, 
+       aes(x=ppls, y=frac*100, color=datatype.group))+
+  geom_violin(aes(fill=datatype.group), alpha=0.2, show.legend = FALSE,
+              position = position_dodge(width = 0.5), scale = "width")+
+  geom_point(position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.5),
+             size=0.5)+
+  geom_text(data=allData_lupus %>% subset(DApop),
+            aes(y=max(allData_lupus$frac*100), group=1), label="*", 
+            color="black", size=12, show.legend = FALSE)+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))+
+  labs(x="cell populations", y="proportion", 
+       color=" data type (sample group)",
+       caption = "* indicate the cell population is set to be differentially abundant between the two groups") +
+  guides(color=guide_legend(override.aes = list(size=5)))
+
+gp2
+# png("results/Figures/supplementary figures/nonparamSimDistrFrac.png", width = 25, height = 10, units = "cm", res = 150)
+# gp
+# dev.off()
+```
+
+The following figures compare the distribution of clr transformed counts of cell populations in the real data (lupus healthy group) and simulated data (group 0 and 1).
+
+```{r, fig.width=12, fig.height=5}
+gp3 = ggplot(allData_lupus, 
+       aes(x=ppls, y=clr, color=datatype.group))+
+   geom_violin(aes(fill=datatype.group), alpha=0.2,show.legend = FALSE,
+              position = position_dodge(width = 0.5), scale = "width")+
+   geom_point(position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.5),
+             size=0.5)+
+  geom_text(data=allData_lupus %>% subset(DApop),
+            aes(y=max(allData_lupus$clr), group=1), label="*", 
+            color="black", size=12, show.legend = FALSE)+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))+
+  labs(x="cell populations", y="CLR", 
+       color="data type (sample group)",
+       caption = "* indicate the cell population is set to be differentially abundant between the two groups") +
+  guides(color=guide_legend(override.aes = list(size=5)))
+
+gp3
+# png("results/Figures/supplementary figures/nonparamSimDistrCLR.png", width = 25, height = 10, units = "cm", res = 150)
+# gp
+# dev.off()
+```
+
+```{r, fig.width=12, fig.height=15}
+require(ggpubr)
+
+png(".../results/supplementary figures/nonparamSimDistr.png", width = 20, height = 25, units = "cm", res = 150)
+ggarrange(gp1, gp2, gp3, ncol=1, common.legend = TRUE, legend = "right")
+dev.off()
+```
+
+
+The figure below shows the mean variance trend of counts of cell populations in the real data (lupus healthy group) and simulated data (group 0 and 1)
+
+```{r}
+meanVar_lupusSim <- allData_lupus %>%  
+  group_by(datatype.group, ppls) %>%
+  summarise(meanCount=mean(count), varCount=var(count))
+
+meanVar_lupusSim$DApop <- ifelse(meanVar_lupusSim$ppls %in% simData_eval$DApops[,1], TRUE, FALSE)
+
+gpp1 = ggplot(meanVar_lupusSim, aes(x=meanCount, y=varCount, 
+                                      color=datatype.group,  label=ppls))+
+  geom_point()+ 
+  scale_y_continuous(trans = "log10")+
+  scale_x_continuous(trans = "log10")+
+  #geom_line(aes(group=ppls), color="gray")+
+  #stat_smooth(method = "rlm", formula = y~poly(x, 2), se=FALSE)+
+  geom_point(data=meanVar_lupusSim %>% subset(DApop & datatype.group=="simulated data (group = 1 )"),
+             size=4, shape=0, show.legend = FALSE)+
+  theme_bw()+
+  labs(x="mean of cell counts [log10 scale]", y="variance of cell counts [log10 scale]", 
+       color="data type (sample group)",
+       caption = "NB: points in an open box indicate the cell populations with \ndifferential abumdance in simulated data group 1") +
+  guides(color=guide_legend(override.aes = list(size=5)))
+
+
+gpp1 
+
+# png("results/Figures/supplementary figures/nonparamSimMeanVarTrendFrac.png",
+#     width = 15, height = 10, units = "cm", res = 150)
+# gp
+# dev.off()
+```
+
+The figure below shows the mean variance trend of CLR transformed counts of cell populations in the real data (lupus healthy group) and simulated data (group 0 and 1)
+
+```{r}
+meanVar_lupusSim <- allData_lupus %>%  
+  group_by(datatype.group, ppls) %>%
+  summarise(meanCLR=mean(clr), varCLR=var(clr))
+
+meanVar_lupusSim$DApop <- ifelse(meanVar_lupusSim$ppls %in% simData_eval$DApops[,1], TRUE, FALSE)
+
+gpp2 = ggplot(meanVar_lupusSim, aes(x=meanCLR, y=varCLR, 
+                                      color=datatype.group,  label=ppls))+
+  geom_point()+ 
+  #geom_line(aes(group=ppls), color="gray")+
+  #stat_smooth(method = "rlm", formula = y~poly(x, 2), se=FALSE)+
+  geom_point(data=meanVar_lupusSim %>% subset(DApop & datatype.group=="simulated data (group = 1 )"),
+             size=4, shape=0, show.legend = FALSE)+
+  theme_bw()+
+  labs(x="mean of CLR", y="variance of CLR", 
+       color="data type (sample group)",
+       caption = "NB: points in an open box indicate the cell populations with \ndifferential abumdance in simulated data group 1") +
+  guides(color=guide_legend(override.aes = list(size=5)))
+
+gpp2
+# png("results/Figures/supplementary figures/nonparamSimMeanVarTrendCLR.png",
+#     width = 15, height = 10, units = "cm", res = 150) 
+# gp
+# dev.off()
+```
+
+```{r, fig.width=12, fig.height=6}
+require(ggpubr)
+
+png(".../results/supplementary figures/nonparamMeanVarTrend.png", width = 20, height = 10, units = "cm", res = 150)
+ggarrange(gpp1, gpp2, ncol=2, common.legend = TRUE, legend = "top")
+dev.off()
+```
+
+## Parametric simulation
+```{r}
+# subset data from healthy group of Lupus study to use it as a baseline for the non-parametric simulation
+Xhealthy <- lupsPoplCountCh4_2_wide[lupsPoplCountCh4_2_wide$group == "Healthy", -c(1:2)]
+
+
+source("R/DM_simCP_V2.R")
+nn=22
+# simulate data with 22 samples per group, 20% DA cell types, parent size equivalent to the Health samples of Lupus data
+paramSimData_eval <- DM_simCP(sample_size = rep(nn, 2),  K = ncol(Xhealthy), frac.daPop = 0.2,  
+                   parent.size = rowSums(Xhealthy)[sample(nrow(Xhealthy), nn*2)], 
+                   scale.dirichlet = 1, sd.intercept = 2, seed = 5555)
+
+Xsrc <- Xhealthy %>%
+  mutate(subjectID=rownames(Xhealthy)) %>%
+  pivot_longer(cols=colnames(Xhealthy), names_to = "ppls", values_to = "count") %>%
+  group_by(subjectID) %>%
+  mutate(clr = as.vector(clr(count)), frac=count/sum(count)) %>%
+  ungroup() %>%
+  mutate(group=0, type="real data")
+ 
+paramXsim <- cbind(group=paramSimData_eval$group, paramSimData_eval$X) %>% 
+  mutate(subjectID=rownames(paramSimData_eval$X)) %>%
+  pivot_longer(cols=colnames(paramSimData_eval$X), names_to = "ppls", values_to = "count") %>%
+  group_by(subjectID) %>%
+ mutate(clr = as.vector(clr(count)), frac=count/sum(count)) %>%
+  ungroup() %>%
+  mutate(type="simulated data")
+
+allData_param<- bind_rows(Xsrc, paramXsim) %>%
+  mutate(datatype.group =paste(type, "(group =", group, ")"))
+allData_param$DApop <- ifelse(allData_param$ppls %in% paramSimData_eval$DApops[,1], TRUE, FALSE)
+```
+
+The following figure compares the distribution of the parent size (total number of cells per samples) in the real and simulated data.
+
+```{r, fig.height=5, fig.width=10}
+parentsize_paramSim <- allData_param %>%  
+  group_by(type, subjectID) %>%
+  summarise(N=sum(count), n=n())
+
+distr.p=ggplot(parentsize_paramSim, 
+       aes(x=N, fill=type, color=type, group=type))+
+  geom_histogram(alpha=0.25, show.legend = FALSE, position = position_dodge())+
+  #facet_grid(~type)+
+  theme_bw() +
+  labs(x="Total number of cells")
+
+distr.p 
+# png("results/Figures/supplementary figures/paramSimDistrN.png", width = 15, height = 6, units = "cm", res = 150)
+# gp
+# dev.off()
+```
+ 
+
+The following figures compares the distribution of counts of cell populations in the real data (lupus healthy group) and simulated data (group 0 and 1).
+
+```{r, fig.width=12, fig.height=5}
+hp1=ggplot(allData_param, 
+       aes(x=ppls, y=count, color=datatype.group))+
+  geom_violin(aes(fill=datatype.group), alpha=0.2, show.legend = FALSE,
+              position = position_dodge(width = 0.5), scale = "width")+
+  geom_point(position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.5),
+             size=0.5)+
+  geom_text(data=allData_param %>% subset(DApop),
+            aes(y=max(allData_param$count), group=1), label="*", 
+            color="black", size=12, show.legend = FALSE)+
+  facet_grid(~type, scales="free_x")+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))+
+  labs(x="cell populations", y="cell count", 
+       color="data type (sample group)",
+       caption = "* indicate the cell population is set to be differentially abundant between the two groups") +
+  guides(color=guide_legend(override.aes = list(size=5)))
+
+hp1
+# png("results/Figures/supplementary figures/paramSimDistrFrac.png", width = 25, height = 10, units = "cm", res = 150)
+# gp
+# dev.off()
+```
+
+The following figures compares the distribution of proportions of cell populations in the real data (lupus healthy group) and simulated data (group 0 and 1).
+
+```{r, fig.width=12, fig.height=5}
+hp2=ggplot(allData_param, 
+       aes(x=ppls, y=frac*100, color=datatype.group))+
+  geom_violin(aes(fill=datatype.group), alpha=0.2, show.legend = FALSE,
+              position = position_dodge(width = 0.5), scale = "width")+
+  geom_point(position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.5),
+             size=0.5)+
+  geom_text(data=allData_param %>% subset(DApop),
+            aes(y=max(allData_param$frac*100), group=1), label="*", 
+            color="black", size=12, show.legend = FALSE)+
+  facet_grid(~type, scales="free_x")+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))+
+  labs(x="cell populations", y="proportion", 
+        color="data type (sample group)",
+       caption = "* indicate the cell population is set to be differentially abundant between the two groups") +
+  guides(color=guide_legend(override.aes = list(size=5)))
+
+hp2
+```
+
+The following figure compare the distribution of clr transformed counts of cell populations in the real data (lupus healthy group) and simulated data (group 0 and 1).
+
+```{r, fig.width=12, fig.height=5}
+hp3 =ggplot(allData_param, 
+       aes(x=ppls, y=clr, color=datatype.group))+
+   geom_violin(aes(fill=datatype.group), alpha=0.2, show.legend = FALSE,
+              position = position_dodge(width = 0.5), scale = "width")+
+   geom_point(position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.5),
+             size=0.5)+
+  geom_text(data=allData_param %>% subset(DApop),
+            aes(y=max(allData_param$clr), group=1), label="*", 
+            color="black", size=12, show.legend = FALSE)+
+  facet_grid(~type, scales="free_x")+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))+
+  labs(x="cell populations", y="CLR", 
+        color="data type (sample group)",
+       caption = "* indicate the cell population is set to be differentially abundant between the two groups") +
+  guides(color=guide_legend(override.aes = list(size=5)))
+
+hp3
+```
+
+```{r, fig.width=12, fig.height=15}
+require(ggpubr)
+
+png("results/Figures/supplementary figures/paramSimDistr.png", width = 20, height = 25, units = "cm", res = 150)
+ggarrange(hp1, hp2, hp3, ncol=1, common.legend = TRUE, legend = "right")
+dev.off()
+```
+
+The figure below shows the mean variance trend of counts of cell populations in the real data (lupus healthy group) and simulated data (group 0 and 1)
+
+```{r}
+meanVar_paramSim <- allData_param %>%  
+  group_by(datatype.group, ppls) %>%
+  summarise(meanCount=mean(count), varCount=var(count))
+
+meanVar_paramSim$DApop <- ifelse(meanVar_paramSim$ppls %in% paramSimData_eval$DApops[,1], TRUE, FALSE)
+
+hpp1 = ggplot(meanVar_paramSim, aes(x=meanCount, y=varCount, 
+                                      color=datatype.group,  label=ppls))+
+  geom_point()+ 
+  scale_y_continuous(trans = "log10")+
+  scale_x_continuous(trans = "log10")+
+  #geom_line(aes(group=ppls), color="gray")+
+  #stat_smooth(method = "rlm", formula = y~poly(x, 2), se=FALSE)+
+  geom_point(data=meanVar_paramSim %>% subset(DApop & datatype.group=="simulated data (group = 1 )"),
+             size=4, shape=0, show.legend = FALSE)+
+  theme_bw()+
+  labs(x="mean of cell counts [log10 scale]", y="variance of cell counts [log10 scale]", 
+       color="data type (sample group)",
+       caption = "NB: points in an open box indicate the cell populations with \ndifferential abumdance in simulated data group 1") +
+  guides(color=guide_legend(override.aes = list(size=5)))
+
+hpp1 
+```
+
+The figure below shows the mean variance trend of CLR transformed counts of cell populations in the real data (lupus healthy group) and simulated data (group 0 and 1)
+
+```{r}
+meanVar_paramSim <- allData_param %>%  
+  group_by(datatype.group, ppls) %>%
+  summarise(meanCLR=mean(clr), varCLR=var(clr))
+
+meanVar_paramSim$DApop <- ifelse(meanVar_paramSim$ppls %in% paramSimData_eval$DApops[,1], TRUE, FALSE)
+
+hpp2 = ggplot(meanVar_paramSim, aes(x=meanCLR, y=varCLR, 
+                                      color=datatype.group,  label=ppls))+
+  geom_point()+ 
+  #geom_line(aes(group=ppls), color="gray")+
+  #stat_smooth(method = "rlm", formula = y~poly(x, 2), se=FALSE)+
+  geom_point(data=meanVar_paramSim %>% subset(DApop & datatype.group=="simulated data (group = 1 )"),
+             size=4, shape=0, show.legend = FALSE)+
+  theme_bw()+
+  labs(x="mean of CLR", y="variance of CLR", 
+       color="data type (sample group)",
+       caption = "NB: points in an open box indicate the cell populations with \ndifferential abumdance in simulated data group 1") +
+  guides(color=guide_legend(override.aes = list(size=5)))
+hpp2 
+```
+
+```{r, fig.width=12, fig.height=6}
+require(ggpubr)
+
+png("results/Figures/supplementary figures/paramMeanVarTrend.png", width = 20, height = 10, units = "cm", res = 150)
+ggarrange(hpp1, hpp2, ncol=2, common.legend = TRUE, legend = "top")
+dev.off()
+```
+
+# Compute Perormance Metrics
+## Nonparametric simulation
+
+### Lupus Data
+
+```{r}
+ 
+res_files_lupus <- list.files(".../results/nonparametricSimulation/")
+ 
+simRes_all_lupus <- lapply(res_files_lupus, function(x){
+  readRDS(paste0(".../results/nonparametricSimulation/", x))
+}) %>% bind_rows() %>%
+  group_by(population, method, n, diffr_range) %>%
+  mutate(itrID = paste0(population, "_", gsub(" = ", "",n), "_", diffr_range, "_",  sim_itr))
+ 
+simRes_all_lupus.LWrandom1 <- simRes_all_lupus %>%
+  subset(diffr_range == "lowDiffWeighted.random")
+ 
+pval.df <- simRes_all_lupus.LWrandom1 %>% 
+  dplyr::select(population, method, n, diffr_range, pval, itrID) %>%
+  pivot_wider(id_cols = c(population, n, diffr_range, itrID), 
+              names_from = method, values_from = pval) %>% 
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, diffr_range))
+
+padj.df <- simRes_all_lupus.LWrandom1 %>% 
+  dplyr::select(population, method, n, diffr_range, padj, itrID) %>%
+  pivot_wider(id_cols = c(population, n, diffr_range, itrID), 
+              names_from = method, values_from = padj) %>%
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, diffr_range)) 
+
+
+truDA.df <- simRes_all_lupus.LWrandom1 %>% 
+  dplyr::select(population, method, n, diffr_range, trueDA, itrID) %>%
+  pivot_wider(id_cols = c(population, n, diffr_range, itrID),
+              names_from = method, values_from = trueDA) %>%
+  column_to_rownames("itrID") %>%
+  mutate(trueDA=as.numeric(NBGLM))
+
+cobradat.lupus.0 <- COBRAData(pval = pval.df,   padj = padj.df, truth = truDA.df)
+
+
+cobraperf.lupus.0 <- calculate_performance(cobradat.lupus.0, maxsplit=6,  
+                                           binary_truth = "trueDA",  
+                                           splv = "n",  thrs = c(0.01, 0.05, 0.1)) 
+
+cobraplot.lupus.0 <- prepare_data_for_plot(cobraperf.lupus.0,  colorscheme = "Dark2",  facetted = TRUE) 
+
+cobraplot.lupus.0df.LWrand <- cobraplot.lupus.0@fdrtprcurve %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+cobraplot.lupus.0bdf.LWrand <- cobraplot.lupus.0@fdrtpr %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+```
+
+## Breast Cancer Data
+
+```{r}
+
+res_files_brst <- list.files(".../results/nonparametricSimulation_breastCancerData/")
+ 
+simRes_all_brst <- lapply(res_files_brst, function(x){
+  readRDS(paste0(".../results/nonparametricSimulation_breastCancerData/", x))
+}) %>% bind_rows() %>%
+  group_by(population, method, n, diffr_range) %>%
+  mutate(itrID = paste0(population, "_", gsub(" = ", "",n), "_", diffr_range, "_",  sim_itr))
+
+
+
+simRes_all_brst.LWrandom1 <- simRes_all_brst %>%
+  subset(diffr_range == "lowDiffWeighted.random")
+ 
+pval.df <- simRes_all_brst.LWrandom1 %>% 
+  dplyr::select(population, method, n, diffr_range, pval, itrID) %>%
+  pivot_wider(id_cols = c(population, n, diffr_range, itrID), 
+              names_from = method, values_from = pval) %>% 
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, diffr_range))
+
+padj.df <- simRes_all_brst.LWrandom1 %>% 
+  dplyr::select(population, method, n, diffr_range, padj, itrID) %>%
+  pivot_wider(id_cols = c(population, n, diffr_range, itrID), 
+              names_from = method, values_from = padj) %>%
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, diffr_range)) 
+
+
+truDA.df <- simRes_all_brst.LWrandom1 %>% 
+  dplyr::select(population, method, n, diffr_range, trueDA, itrID) %>%
+  pivot_wider(id_cols = c(population, n, diffr_range, itrID),
+              names_from = method, values_from = trueDA) %>%
+  column_to_rownames("itrID") %>%
+  mutate(trueDA=as.numeric(NBGLM))
+
+cobradat.brst.0 <- COBRAData(pval = pval.df,   padj = padj.df, truth = truDA.df)
+
+
+cobraperf.brst.0 <- calculate_performance(cobradat.brst.0, maxsplit=6,  
+                                           binary_truth = "trueDA",  
+                                           splv = "n",  thrs = c(0.01, 0.05, 0.1))
+
+cobraplot.brst.0 <- prepare_data_for_plot(cobraperf.brst.0,  colorscheme = "Dark2",  facetted = TRUE) 
+ 
+
+cobraplot.brst.0df.LWrand <- cobraplot.brst.0@fdrtprcurve %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+cobraplot.brst.0bdf.LWrand <- cobraplot.brst.0@fdrtpr %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+```
+
+## Parametric simulation
+
+```{r}
+res_files_paramSimLupus <- list.files(".../results/parametricSimulation/K11/")
+simRes_all_paramSimLupus<- lapply(res_files_paramSimLupus, function(x){
+  readRDS(paste0(".../results/parametricSimulation/K11/", x))
+}) %>% bind_rows() %>%
+  #subset(var_scale == 0.25) %>%
+  group_by(population, method, n, diffr_range, var_scale) %>%
+  mutate(itrID = paste0(population, "_", gsub(" = ", "",n), "_varScale",  var_scale, "_",sim_itr)) %>%
+  ungroup()
+```
+ 
+ 
+### K=11
+
+::: panel-tabset
+#### High var
+
+```{r}
+simRes_all_paramSimLupus_highVar <- simRes_all_paramSimLupus %>%
+  subset(var_scale == 0.25)
+ 
+pval.df <- simRes_all_paramSimLupus_highVar %>% 
+  dplyr::select(population, method, n, var_scale, pval, itrID) %>%
+  pivot_wider(id_cols = c(population, n, var_scale, itrID), 
+              names_from = method, values_from = pval) %>% 
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, var_scale))
+
+padj.df <- simRes_all_paramSimLupus_highVar %>% 
+  dplyr::select(population, method, n, var_scale, padj, itrID) %>%
+  pivot_wider(id_cols = c(population, n, var_scale, itrID), 
+              names_from = method, values_from = padj) %>%
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, var_scale)) 
+
+
+truDA.df <- simRes_all_paramSimLupus_highVar %>% 
+  dplyr::select(population, method, n, var_scale, trueDA, itrID) %>%
+  pivot_wider(id_cols = c(population, n, var_scale, itrID),
+              names_from = method, values_from = trueDA) %>%
+  column_to_rownames("itrID") %>%
+  mutate(trueDA=as.numeric(NBGLM))
+
+
+cobradat.paramlupus.0 <- COBRAData(pval = pval.df,  padj = padj.df, truth = truDA.df)
+
+
+cobraperf.paramlupus.0 <- calculate_performance(cobradat.paramlupus.0, maxsplit=6,  
+                                           binary_truth = "trueDA",  splv = "n",  
+                                           thrs = c(0.01, 0.05, 0.1))
+
+
+cobraplot.paramlupus.0 <- prepare_data_for_plot(cobraperf.paramlupus.0, 
+                                                colorscheme = "Dark2",  facetted = TRUE) 
+
+cobraplot.paramlupus.0df.highV <- cobraplot.paramlupus.0@fdrtprcurve %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+cobraplot.paramlupus.0bdf.highV <- cobraplot.paramlupus.0@fdrtpr %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+
+
+```
+
+#### Medium var
+
+```{r}
+simRes_all_paramSimLupus_medVar <- simRes_all_paramSimLupus %>%
+  subset(var_scale == 1)
+ 
+pval.df <- simRes_all_paramSimLupus_medVar %>% 
+  dplyr::select(population, method, n, var_scale, pval, itrID) %>%
+  pivot_wider(id_cols = c(population, n, var_scale, itrID), 
+              names_from = method, values_from = pval) %>% 
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, var_scale))
+
+padj.df <- simRes_all_paramSimLupus_medVar %>% 
+  dplyr::select(population, method, n, var_scale, padj, itrID) %>%
+  pivot_wider(id_cols = c(population, n, var_scale, itrID), 
+              names_from = method, values_from = padj) %>%
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, var_scale)) 
+
+
+truDA.df <- simRes_all_paramSimLupus_medVar %>% 
+  dplyr::select(population, method, n, var_scale, trueDA, itrID) %>%
+  pivot_wider(id_cols = c(population, n, var_scale, itrID),
+              names_from = method, values_from = trueDA) %>%
+  column_to_rownames("itrID") %>%
+  mutate(trueDA=as.numeric(NBGLM))
+
+ 
+cobradat.paramlupus.0 <- COBRAData(pval = pval.df,  padj = padj.df,  truth = truDA.df)
+
+
+
+cobraperf.paramlupus.0 <- calculate_performance(cobradat.paramlupus.0, maxsplit=6,  
+                                           binary_truth = "trueDA",  splv = "n",  
+                                           thrs = c(0.01, 0.05, 0.1))
+
+
+cobraplot.paramlupus.0 <- prepare_data_for_plot(cobraperf.paramlupus.0, 
+                                                colorscheme = "Dark2",  facetted = TRUE) 
+
+cobraplot.paramlupus.0df.medV <- cobraplot.paramlupus.0@fdrtprcurve %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+cobraplot.paramlupus.0bdf.medV <- cobraplot.paramlupus.0@fdrtpr %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+```
+
+#### Low var
+
+```{r}
+simRes_all_paramSimLupus_lowVar <- simRes_all_paramSimLupus %>%
+  subset(var_scale == 1.5)
+ 
+pval.df <- simRes_all_paramSimLupus_lowVar %>% 
+  dplyr::select(population, method, n, var_scale, pval, itrID) %>%
+  pivot_wider(id_cols = c(population, n, var_scale, itrID), 
+              names_from = method, values_from = pval) %>% 
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, var_scale))
+
+padj.df <- simRes_all_paramSimLupus_lowVar %>% 
+  dplyr::select(population, method, n, var_scale, padj, itrID) %>%
+  pivot_wider(id_cols = c(population, n, var_scale, itrID), 
+              names_from = method, values_from = padj) %>%
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, var_scale)) 
+
+
+truDA.df <- simRes_all_paramSimLupus_lowVar %>% 
+  dplyr::select(population, method, n, var_scale, trueDA, itrID) %>%
+  pivot_wider(id_cols = c(population, n, var_scale, itrID),
+              names_from = method, values_from = trueDA) %>%
+  column_to_rownames("itrID") %>%
+  mutate(trueDA=as.numeric(NBGLM))
+
+
+cobradat.paramlupus.0 <- 
+  COBRAData(pval = pval.df,  padj = padj.df,  truth = truDA.df)
+
+
+
+cobraperf.paramlupus.0 <- calculate_performance(cobradat.paramlupus.0, maxsplit=6,  
+                                           binary_truth = "trueDA",  splv = "n",  
+                                           thrs = c(0.01, 0.05, 0.1)) 
+
+cobraplot.paramlupus.0 <- prepare_data_for_plot(cobraperf.paramlupus.0, 
+                                                colorscheme = "Dark2",  facetted = TRUE) 
+
+cobraplot.paramlupus.0df.lowV <- cobraplot.paramlupus.0@fdrtprcurve %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+cobraplot.paramlupus.0bdf.lowV <- cobraplot.paramlupus.0@fdrtpr %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+
+
+```
+
+### Multiple K
+
+```{r}
+res_files_paramSimMultK <- list.files(".../results/parametricSimulation/multipleK/")
+simRes_all_paramSimMultK<- lapply(res_files_paramSimMultK, function(x){
+  readRDS(paste0(".../results/parametricSimulation/multipleK/", x))
+}) %>% bind_rows() %>% 
+  group_by(population, method, n, K, var_scale) %>%
+  mutate(itrID = paste0(population, "_", gsub(" = ", "",n), "_K",  K, "_",sim_itr)) %>%
+  ungroup()
+```
+
+```{r K=5}
+pval.df <- simRes_all_paramSimMultK %>% 
+  subset(K==5) %>%
+  dplyr::select(population, method, n, K, pval, itrID) %>%
+  pivot_wider(id_cols = c(population, n, K, itrID), 
+              names_from = method, values_from = pval) %>% 
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, K))
+
+padj.df <- simRes_all_paramSimMultK %>% 
+   subset(K==5) %>%
+  dplyr::select(population, method, n, K, padj, itrID) %>%
+  pivot_wider(id_cols = c(population, n, K, itrID), 
+              names_from = method, values_from = padj) %>%
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, K)) 
+
+truDA.df <- simRes_all_paramSimMultK %>% 
+   subset(K==5) %>%
+  dplyr::select(population, method, n, K, trueDA, itrID) %>%
+  pivot_wider(id_cols = c(population, n, K, itrID),
+              names_from = method, values_from = trueDA) %>%
+  column_to_rownames("itrID") %>%
+  mutate(trueDA=as.numeric(NBGLM))
+
+cobradat.param5K.0 <- COBRAData(pval = pval.df , padj = padj.df, truth = truDA.df)
+
+cobraperf.param5K.0 <- calculate_performance(cobradat.param5K.0, maxsplit=6,
+                                           binary_truth = "trueDA",  splv = "n",  thrs = c(0.01, 0.05, 0.1))
+  
+cobraplot.param5K.0 <- prepare_data_for_plot(cobraperf.param5K.0,
+                                                colorscheme = "Dark2",  facetted = TRUE)
+ 
+cobraplot.param5K.0df <- cobraplot.param5K.0@fdrtprcurve %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+cobraplot.param5K.0bdf <- cobraplot.param5K.0@fdrtpr %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+```
+
+```{r K=10}
+pval.df <- simRes_all_paramSimMultK %>% 
+  subset(K==10) %>%
+  dplyr::select(population, method, n, K, pval, itrID) %>%
+  pivot_wider(id_cols = c(population, n, K, itrID), 
+              names_from = method, values_from = pval) %>% 
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, K))
+
+padj.df <- simRes_all_paramSimMultK %>% 
+   subset(K==10) %>%
+  dplyr::select(population, method, n, K, padj, itrID) %>%
+  pivot_wider(id_cols = c(population, n, K, itrID), 
+              names_from = method, values_from = padj) %>%
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, K)) 
+
+truDA.df <- simRes_all_paramSimMultK %>% 
+   subset(K==10) %>%
+  dplyr::select(population, method, n, K, trueDA, itrID) %>%
+  pivot_wider(id_cols = c(population, n, K, itrID),
+              names_from = method, values_from = trueDA) %>%
+  column_to_rownames("itrID") %>%
+  mutate(trueDA=as.numeric(NBGLM))
+
+cobradat.param10k.0 <- COBRAData(pval = pval.df , padj = padj.df, truth = truDA.df)
+
+cobraperf.param10k.0 <- calculate_performance(cobradat.param10k.0, maxsplit=6,
+                                           binary_truth = "trueDA",  splv = "n",  thrs = c(0.01, 0.05, 0.1))
+  
+cobraplot.param10k.0 <- prepare_data_for_plot(cobraperf.param10k.0,
+                                                colorscheme = "Dark2",  facetted = TRUE)
+ 
+cobraplot.param10k.0df <- cobraplot.param10k.0@fdrtprcurve %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+cobraplot.param10k.0bdf <- cobraplot.param10k.0@fdrtpr %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+```
+
+```{r K=20}
+pval.df <- simRes_all_paramSimMultK %>% 
+  subset(K==20) %>%
+  dplyr::select(population, method, n, K, pval, itrID) %>%
+  pivot_wider(id_cols = c(population, n, K, itrID), 
+              names_from = method, values_from = pval) %>% 
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, K))
+
+padj.df <- simRes_all_paramSimMultK %>% 
+   subset(K==20) %>%
+  dplyr::select(population, method, n, K, padj, itrID) %>%
+  pivot_wider(id_cols = c(population, n, K, itrID), 
+              names_from = method, values_from = padj) %>%
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, K)) 
+
+truDA.df <- simRes_all_paramSimMultK %>% 
+   subset(K==20) %>%
+  dplyr::select(population, method, n, K, trueDA, itrID) %>%
+  pivot_wider(id_cols = c(population, n, K, itrID),
+              names_from = method, values_from = trueDA) %>%
+  column_to_rownames("itrID") %>%
+  mutate(trueDA=as.numeric(NBGLM))
+
+cobradat.param20k.0 <- COBRAData(pval = pval.df , padj = padj.df, truth = truDA.df)
+
+cobraperf.param20k.0 <- calculate_performance(cobradat.param20k.0, maxsplit=6,
+                                           binary_truth = "trueDA",  splv = "n",  thrs = c(0.01, 0.05, 0.1))
+  
+cobraplot.param20k.0 <- prepare_data_for_plot(cobraperf.param20k.0,
+                                                colorscheme = "Dark2",  facetted = TRUE)
+ 
+cobraplot.param20k.0df <- cobraplot.param20k.0@fdrtprcurve %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+cobraplot.param20k.0bdf <- cobraplot.param20k.0@fdrtpr %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+```
+
+```{r K=50}
+pval.df <- simRes_all_paramSimMultK %>% 
+  subset(K==50) %>%
+  dplyr::select(population, method, n, K, pval, itrID) %>%
+  pivot_wider(id_cols = c(population, n, K, itrID), 
+              names_from = method, values_from = pval) %>% 
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, K))
+
+padj.df <- simRes_all_paramSimMultK %>% 
+   subset(K==50) %>%
+  dplyr::select(population, method, n, K, padj, itrID) %>%
+  pivot_wider(id_cols = c(population, n, K, itrID), 
+              names_from = method, values_from = padj) %>%
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, K)) 
+
+truDA.df <- simRes_all_paramSimMultK %>% 
+   subset(K==50) %>%
+  dplyr::select(population, method, n, K, trueDA, itrID) %>%
+  pivot_wider(id_cols = c(population, n, K, itrID),
+              names_from = method, values_from = trueDA) %>%
+  column_to_rownames("itrID") %>%
+  mutate(trueDA=as.numeric(NBGLM))
+
+cobradat.param50k.0 <- COBRAData(pval = pval.df , padj = padj.df, truth = truDA.df)
+
+cobraperf.param50k.0 <- calculate_performance(cobradat.param50k.0, maxsplit=6,
+                                           binary_truth = "trueDA",  splv = "n",  thrs = c(0.01, 0.05, 0.1))
+  
+cobraplot.param50k.0 <- prepare_data_for_plot(cobraperf.param50k.0,
+                                                colorscheme = "Dark2",  facetted = TRUE)
+ 
+cobraplot.param50k.0df <- cobraplot.param50k.0@fdrtprcurve %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+cobraplot.param50k.0bdf <- cobraplot.param50k.0@fdrtpr %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+```
+
+```{r K=100}
+pval.df <- simRes_all_paramSimMultK %>% 
+  subset(K==100) %>%
+  dplyr::select(population, method, n, K, pval, itrID) %>%
+  pivot_wider(id_cols = c(population, n, K, itrID), 
+              names_from = method, values_from = pval) %>% 
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, K))
+
+padj.df <- simRes_all_paramSimMultK %>% 
+   subset(K==100) %>%
+  dplyr::select(population, method, n, K, padj, itrID) %>%
+  pivot_wider(id_cols = c(population, n, K, itrID), 
+              names_from = method, values_from = padj) %>%
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, K)) 
+
+truDA.df <- simRes_all_paramSimMultK %>% 
+   subset(K==100) %>%
+  dplyr::select(population, method, n, K, trueDA, itrID) %>%
+  pivot_wider(id_cols = c(population, n, K, itrID),
+              names_from = method, values_from = trueDA) %>%
+  column_to_rownames("itrID") %>%
+  mutate(trueDA=as.numeric(NBGLM))
+
+cobradat.param100k.0 <- COBRAData(pval = pval.df , padj = padj.df, truth = truDA.df)
+
+cobraperf.param100k.0 <- calculate_performance(cobradat.param100k.0, maxsplit=6,
+                                           binary_truth = "trueDA",  splv = "n",  thrs = c(0.01, 0.05, 0.1))
+  
+cobraplot.param100k.0 <- prepare_data_for_plot(cobraperf.param100k.0,
+                                                colorscheme = "Dark2",  facetted = TRUE)
+ 
+cobraplot.param100k.0df <- cobraplot.param100k.0@fdrtprcurve %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+cobraplot.param100k.0bdf <- cobraplot.param100k.0@fdrtpr %>%
+  subset(splitval %in% c("n:n = 5", "n:n = 10", "n:n = 20")) %>%
+  mutate(splitval = gsub("n:", "", splitval),
+         splitval = factor(splitval, levels = c("n = 5", "n = 10", "n = 20"),
+                           ordered = TRUE))
+```
+
+The performance of all main methods across different number of populations
+
+```{r, eval=FALSE}
+cobraplot.param5K.2df <- cobraplot.param5K.2df %>% mutate(K="P=5")
+cobraplot.param5K.2bdf <- cobraplot.param5K.2bdf %>% mutate(K="P=5")
+
+cobraplot.param10K.2df <- cobraplot.param10K.2df %>% mutate(K="P=10")
+cobraplot.param10K.2bdf <- cobraplot.param10K.2bdf %>% mutate(K="P=10")
+
+cobraplot.param20K.2df <- cobraplot.param20K.2df %>% mutate(K="P=20")
+cobraplot.param20K.2bdf <- cobraplot.param20K.2bdf %>% mutate(K="P=20")
+
+cobraplot.param50K.2df <- cobraplot.param50K.2df %>% mutate(K="P=50")
+cobraplot.param50K.2bdf <- cobraplot.param50K.2bdf %>% mutate(K="P=50")
+
+cobraplot.param100K.2df <- cobraplot.param100K.2df %>% mutate(K="P=100")
+cobraplot.param100K.2bdf <- cobraplot.param100K.2bdf %>% mutate(K="P=100")
+
+
+cobraplotMultiK.2df  <- bind_rows(cobraplot.param5K.2df, 
+                                  cobraplot.param10K.2df, 
+                                  cobraplot.param20K.2df, 
+                                  cobraplot.param50K.2df, 
+                                  cobraplot.param100K.2df) %>%
+  mutate(K=factor(K, levels = paste0("P=", c(5, 10, 20, 50, 100)), ordered = TRUE))
+cobraplotMultiK.2bdf <- bind_rows(cobraplot.param5K.2bdf, 
+                                  cobraplot.param10K.2bdf, 
+                                  cobraplot.param20K.2bdf, 
+                            cobraplot.param50K.2bdf, 
+                            cobraplot.param100K.2bdf)%>%
+  mutate(K=factor(K, levels = paste0("P=", c(5, 10, 20, 50, 100)), ordered = TRUE))
+```
+
+# Performance Figures
+
+```{r}
+cobraplot.lupus.0df.LWrand  <- cobraplot.lupus.0df.LWrand %>%
+  mutate(sim.method="nonparametric")
+cobraplot.lupus.0bdf.LWrand  <- cobraplot.lupus.0bdf.LWrand  %>%
+   mutate(sim.method="nonparametric")
+
+
+cobraplot.paramlupus.0df.medV <- cobraplot.paramlupus.0df.medV %>%
+  mutate(sim.method="parametric")
+cobraplot.paramlupus.0bdf.medV <- cobraplot.paramlupus.0bdf.medV %>%
+  mutate(sim.method="parametric")
+
+
+
+cobraplot.0df  <- bind_rows(cobraplot.lupus.0df.LWrand, cobraplot.paramlupus.0df.medV)
+cobraplot.0bdf <- bind_rows(cobraplot.lupus.0bdf.LWrand, cobraplot.paramlupus.0bdf.medV)
+
+cobraplot.list <- list(cobraplot.0df=cobraplot.0df, cobraplot.0bdf=cobraplot.0bdf)
+```
+
+## Main Figures: Performance of voomCLR variants
+
+Performance of variuous voomCLR configurations
+
+```{r}
+selected.methods1 <- c("voomCLR", "voomCLR_NBAnalyticalVarCalc",  
+                       "voomCLR_PoissonAnalyticalVarCalc", "voomCLR_bootNonParametric",
+                       "voomCLR_bootParametric", "voomCLR_Pboot_NBweight", 
+                       "voomCLR_Pboot_PoisWeight", "voomCLR_NPboot_NBweight", "voomCLR_NPboot_PoisWeight")
+selected.res.1df <- cobraplot.list$cobraplot.0df %>% 
+         subset(method %in% selected.methods1) %>%
+   mutate(method = case_when(
+                            method=="voomCLR"~"voomCLR (empirical weights & no uncertainity correction)",
+                            method=="voomCLR_bootNonParametric"~"voomCLR (empirical weights & nonparametric bootstrap)",
+                            method=="voomCLR_bootParametric"~"voomCLR (empirical weights & parametric bootstrap)",
+                            method=="voomCLR_NBAnalyticalVarCalc"~"voomCLR (NB analytical weights  & no uncertainity correction)",
+                            method=="voomCLR_PoissonAnalyticalVarCalc"~
+                              "voomCLR (Poisson analytical weight  & no uncertainity correction)",
+                            method=="voomCLR_NPboot_NBweight"~
+                              "voomCLR (NB analytical weights & nonparametric bootstrap)",
+                            method=="voomCLR_NPboot_PoisWeight"~
+                              "voomCLR (Poisson analytical weights & nonparametric bootstrap)",
+                            method=="voomCLR_Pboot_NBweight"~
+                              "voomCLR (NB analytical weights & parametric bootstrap)",
+                            method=="voomCLR_Pboot_PoisWeight"~
+                              "voomCLR (Poisson analytical weights & parametric bootstrap)",
+                            TRUE~method),
+         method = factor(method, 
+                         levels=c("voomCLR (empirical weights & no uncertainity correction)", 
+                                  "voomCLR (empirical weights & nonparametric bootstrap)", 
+                                  "voomCLR (empirical weights & parametric bootstrap)", 
+                                  "voomCLR (NB analytical weights  & no uncertainity correction)",  
+                                  "voomCLR (Poisson analytical weight  & no uncertainity correction)",
+                                  "voomCLR (NB analytical weights & nonparametric bootstrap)",
+                                  "voomCLR (Poisson analytical weights & nonparametric bootstrap)",
+                                  "voomCLR (NB analytical weights & parametric bootstrap)",
+                                  "voomCLR (Poisson analytical weights & parametric bootstrap)")),
+         sim.method=case_when(sim.method=="nonparametric"~"non-parametric simulation", 
+                              TRUE~"parametric simulation"))
+
+selected.res.1dfb <- cobraplot.list$cobraplot.0bdf %>% 
+         subset(method %in% selected.methods1)%>%
+ mutate(method = case_when(
+                            method=="voomCLR"~"voomCLR (empirical weights & no uncertainity correction)",
+                            method=="voomCLR_bootNonParametric"~"voomCLR (empirical weights & nonparametric bootstrap)",
+                            method=="voomCLR_bootParametric"~"voomCLR (empirical weights & parametric bootstrap)",
+                            method=="voomCLR_NBAnalyticalVarCalc"~"voomCLR (NB analytical weights & no uncertainity correction)",
+                            method=="voomCLR_PoissonAnalyticalVarCalc"~
+                              "voomCLR (Poisson analytical weight & no uncertainity correction)",
+                            method=="voomCLR_NPboot_NBweight"~
+                              "voomCLR (NB analytical weights & nonparametric bootstrap)",
+                            method=="voomCLR_NPboot_PoisWeight"~
+                              "voomCLR (Poisson analytical weights & nonparametric bootstrap)",
+                            method=="voomCLR_Pboot_NBweight"~
+                              "voomCLR (NB analytical weights & parametric bootstrap)",
+                            method=="voomCLR_Pboot_PoisWeight"~
+                              "voomCLR (Poisson analytical weights & parametric bootstrap)",
+                            TRUE~method),
+         method = factor(method, 
+                         levels=c("voomCLR (empirical weights & no uncertainity correction)", 
+                                  "voomCLR (empirical weights & nonparametric bootstrap)", 
+                                  "voomCLR (empirical weights & parametric bootstrap)", 
+                                  
+                                  "voomCLR (Poisson analytical weight & no uncertainity correction)",
+                                  "voomCLR (Poisson analytical weights & nonparametric bootstrap)",
+                                  "voomCLR (Poisson analytical weights & parametric bootstrap)",
+                                  
+                                  "voomCLR (NB analytical weights & no uncertainity correction)", 
+                                  "voomCLR (NB analytical weights & nonparametric bootstrap)", 
+                                  "voomCLR (NB analytical weights & parametric bootstrap)"
+                                  ),
+                         labels=c("voomCLR (empirical weights &\nno uncertainity correction)", 
+                                  "voomCLR (empirical weights &\nnonparametric bootstrap)", 
+                                  "voomCLR (empirical weights &\nparametric bootstrap)", 
+                                  
+                                   "voomCLR (Poisson analytical weight &\nno uncertainity correction)",
+                                  "voomCLR (Poisson analytical weights &\nnonparametric bootstrap)",
+                                  "voomCLR (Poisson analytical weights &\nparametric bootstrap)",
+                                  
+                                  "voomCLR (NB analytical weights &\nno uncertainity correction)",   
+                                  "voomCLR (NB analytical weights &\nnonparametric bootstrap)", 
+                                  "voomCLR (NB analytical weights &\nparametric bootstrap)"
+                                  )),
+         sim.method=case_when(sim.method=="nonparametric"~"non-parametric simulation", 
+                              TRUE~"parametric simulation"))
+
+# sel.plt1 <- ggplot(selected.res.1df, 
+#        aes(x=FDR, y=TPR, colour = method))+
+#   geom_vline(xintercept = 0.05, lty=2, col="gray", lwd=1)+
+#   geom_point(size=0.5, shape=20)+
+#   geom_point(data = selected.res.1dfb %>%
+#                subset(thr=="thr0.05"),
+#              size=3, shape=21, fill="white", stroke=1) +
+#   geom_point(data = selected.res.1dfb %>%
+#                subset(thr=="thr0.05"),
+#          aes(fill=method), size=0,stroke=0)+
+#   facet_grid(sim.method~splitval)+
+#   theme_bw() +
+#   theme(strip.text.x = element_text(size=16),
+#         strip.text.y = element_text(size=13))+
+#   guides(fill=guide_legend(override.aes = list(size=3)))
+# 
+# sel.plt1 
+
+colorShades <- 
+  c('voomCLR (empirical weights &\nno uncertainity correction)' = "orange",
+    'voomCLR (empirical weights &\nnonparametric bootstrap)' = "orange3", 
+    'voomCLR (empirical weights &\nparametric bootstrap)' = "salmon4", 
+    
+    'voomCLR (NB analytical weights &\nno uncertainity correction)' = "#66B2FF", 
+    'voomCLR (NB analytical weights &\nnonparametric bootstrap)' = "#0000FF", 
+    'voomCLR (NB analytical weights &\nparametric bootstrap)' = "#000099", 
+    
+    'voomCLR (Poisson analytical weight &\nno uncertainity correction)' = "mediumvioletred",
+    'voomCLR (Poisson analytical weights &\nnonparametric bootstrap)' = "purple2",  
+    'voomCLR (Poisson analytical weights &\nparametric bootstrap)' = "purple4")
+
+sel.plt1b <- ggplot(selected.res.1dfb %>%
+    mutate(nomFDR = paste0(as.numeric(gsub("thr", "", thr))*100, "%"),
+           nomFDR=factor(nomFDR, levels=c("1%", "5%", "10%"))),
+       aes(x=FDR, y=TPR, colour = method))+
+
+  geom_vline(xintercept = c(0.01, 0.05, 0.1), col="gray", lty=2)+
+  geom_text(data=data.frame(x=c(0.01, 0.05, 0.1),
+                            y=rep(0.975, 3), txt=c("1%", "5%", "10%")),
+            aes(x=x+0.01,y=y, label=txt), size=3, angle=90, inherit.aes = FALSE)+
+
+  geom_line(linewidth=1)+
+  geom_point(size=2, aes(shape=nomFDR))+
+  geom_point(size=1.8, aes(shape=nomFDR), fill="white")+
+  scale_shape_manual(values = c(21, 22, 24))+
+  scale_color_manual(values = colorShades)+
+  # geom_point(data = selected.res.dfb %>%
+  #              subset(thr=="thr0.05"),
+  #            size=3, shape=21, fill="white", stroke=1) +
+  # geom_point(data = selected.res.dfb %>%
+  #              subset(thr=="thr0.05"),
+  #        aes(fill=method), size=0,stroke=0)+
+  facet_grid(sim.method~splitval)+
+  theme_bw() +
+  theme(strip.text.x = element_text(size=14),
+        strip.text.y = element_text(size=13))+
+  labs(shape="nominal FDR")+
+  guides(fill=guide_legend(override.aes = list(size=3)))+
+  ylim(0, 1) 
+
+# sel.plt1b
+png("results/Figures/main figures V2/performanceVoomCLR_V2.png", width = 25, height = 14, units = "cm", res = 300)
+sel.plt1b
+dev.off()
+```
+
+```{r}
+ggplot(selected.res.1dfb %>%
+    mutate(nomFDR = paste0(as.numeric(gsub("thr", "", thr))*100, "%"),
+           nomFDR=factor(nomFDR, levels=c("1%", "5%", "10%"))),
+       aes(x=method, y=FDR, color=TPR, shape=nomFDR))+
+  geom_hline(yintercept = c(0.01, 0.05, 0.1), col="gray", lty=2)+
+  # geom_text(data=data.frame(y=c(0.01, 0.05, 0.1),
+  #                           x=rep(10, 3), txt=c("1%", "5%", "10%")),
+  #           aes(y=y+0.01, x=x,  label=txt), size=3, angle=90, inherit.aes = FALSE)+
+  geom_point(size=4)+
+  scale_color_gradient2(low = "white", mid = "orange", high = "green4", midpoint = 0.5)+
+  facet_grid(splitval~sim.method)+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 80, hjust = 1))
+```
+
+Performance of variuous voomCLR configurations on different level of variability using parametric simulation.
+
+```{r}
+selected.methods1 <- c("voomCLR", "voomCLR_NBAnalyticalVarCalc",  
+                       "voomCLR_PoissonAnalyticalVarCalc", "voomCLR_bootNonParametric",
+                       "voomCLR_bootParametric", "voomCLR_Pboot_NBweight", 
+                       "voomCLR_Pboot_PoisWeight", "voomCLR_NPboot_NBweight", "voomCLR_NPboot_PoisWeight")
+
+selected.res.varaiblity <- 
+  bind_rows(cobraplot.paramlupus.0bdf.lowV %>% 
+              mutate(varGroup=paste0("'low var. ('~gamma~'='~1.5~')'")),
+          cobraplot.paramlupus.0bdf.medV%>% 
+              mutate(varGroup=paste0("'medium var. ('~gamma~'='~1.0~')'")),
+          cobraplot.paramlupus.0bdf.highV%>% 
+              mutate(varGroup=paste0("'high var. ('~gamma~'='~0.25~')'"))) %>%
+  mutate(varGroup=factor(varGroup, 
+                         levels=c("'low var. ('~gamma~'='~1.5~')'",
+                                  "'medium var. ('~gamma~'='~1.0~')'",
+                                  "'high var. ('~gamma~'='~0.25~')'"),
+                         ordered = TRUE),
+         nn= case_when(splitval == "n = 5"~"'n = '~5",
+                       splitval == "n = 10"~"'n = '~10",
+                       splitval == "n = 20"~"'n = '~20"),
+         nn=factor(nn, levels=c("'n = '~5", "'n = '~10", "'n = '~20")))
+
+selected.res.b <- selected.res.varaiblity %>% 
+         subset(method %in% selected.methods1)%>%
+ mutate(method = case_when(
+                            method=="voomCLR"~"voomCLR (empirical weights & no uncertainity correction)",
+                            method=="voomCLR_bootNonParametric"~"voomCLR (empirical weights & nonparametric bootstrap)",
+                            method=="voomCLR_bootParametric"~"voomCLR (empirical weights & parametric bootstrap)",
+                            method=="voomCLR_NBAnalyticalVarCalc"~"voomCLR (NB analytical weights & no uncertainity correction)",
+                            method=="voomCLR_PoissonAnalyticalVarCalc"~
+                              "voomCLR (Poisson analytical weight & no uncertainity correction)",
+                            method=="voomCLR_NPboot_NBweight"~
+                              "voomCLR (NB analytical weights & nonparametric bootstrap)",
+                            method=="voomCLR_NPboot_PoisWeight"~
+                              "voomCLR (Poisson analytical weights & nonparametric bootstrap)",
+                            method=="voomCLR_Pboot_NBweight"~
+                              "voomCLR (NB analytical weights & parametric bootstrap)",
+                            method=="voomCLR_Pboot_PoisWeight"~
+                              "voomCLR (Poisson analytical weights & parametric bootstrap)",
+                            TRUE~method),
+         method = factor(method, 
+                         levels=c("voomCLR (empirical weights & no uncertainity correction)", 
+                                  "voomCLR (empirical weights & nonparametric bootstrap)", 
+                                  "voomCLR (empirical weights & parametric bootstrap)", 
+                                  "voomCLR (NB analytical weights & no uncertainity correction)",  
+                                  "voomCLR (Poisson analytical weight & no uncertainity correction)",
+                                  "voomCLR (NB analytical weights & nonparametric bootstrap)",
+                                  "voomCLR (Poisson analytical weights & nonparametric bootstrap)",
+                                  "voomCLR (NB analytical weights & parametric bootstrap)",
+                                  "voomCLR (Poisson analytical weights & parametric bootstrap)"),
+                         labels=c("voomCLR (empirical weights &\nno uncertainity correction)", 
+                                  "voomCLR (empirical weights &\nnonparametric bootstrap)", 
+                                  "voomCLR (empirical weights &\nparametric bootstrap)", 
+                                  "voomCLR (NB analytical weights &\nno uncertainity correction)",  
+                                  "voomCLR (Poisson analytical weight &\nno uncertainity correction)",
+                                  "voomCLR (NB analytical weights &\nnonparametric bootstrap)",
+                                  "voomCLR (Poisson analytical weights &\nnonparametric bootstrap)",
+                                  "voomCLR (NB analytical weights &\nparametric bootstrap)",
+                                  "voomCLR (Poisson analytical weights &\nparametric bootstrap)")))
+
+ 
+
+sel.plt1b <- ggplot(selected.res.b %>%
+    mutate(nomFDR = paste0(as.numeric(gsub("thr", "", thr))*100, "%"),
+           nomFDR=factor(nomFDR, levels=c("1%", "5%", "10%"))),
+       aes(x=FDR, y=TPR, colour = method))+
+
+  geom_vline(xintercept = c(0.01, 0.05, 0.1), col="gray", lty=2)+
+  geom_text(data=data.frame(x=c(0.01, 0.05, 0.1),
+                            y=rep(0.975, 3), txt=c("1%", "5%", "10%")),
+            aes(x=x+0.01,y=y, label=txt), size=3, angle=90, inherit.aes = FALSE)+
+
+  geom_line(linewidth=1)+
+  geom_point(size=2, aes(shape=nomFDR))+
+  geom_point(size=1.8, aes(shape=nomFDR), fill="white")+
+  scale_shape_manual(values = c(21, 22, 24))+
+  facet_grid(nn~varGroup, labeller=label_parsed)+
+  theme_bw() +
+  theme(strip.text.x = element_text(size=14),
+        strip.text.y = element_text(size=13))+
+  labs(shape="nominal FDR")+
+  guides(fill=guide_legend(override.aes = list(size=3)))+
+  ylim(0, 1) + xlim(0,0.3)
+
+sel.plt1b
+# png("results/Figures/main figures V2/performanceVoomCLRdifferentVariability.png", width = 25, height = 14, units = "cm", res = 300)
+# sel.plt1b
+# dev.off()
+```
+
+Performance of variuous voomCLR configurations on different numbers of cell populations using parametric simulation.
+
+```{r}
+selected.methods1 <- c("voomCLR", "voomCLR_NBAnalyticalVarCalc",  
+                       "voomCLR_PoissonAnalyticalVarCalc", "voomCLR_bootNonParametric",
+                       "voomCLR_bootParametric", "voomCLR_Pboot_NBweight", 
+                       "voomCLR_Pboot_PoisWeight", "voomCLR_NPboot_NBweight", "voomCLR_NPboot_PoisWeight")
+selected.methods1b <- c("voomCLR", "voomCLR_NBAnalyticalVarCalc",  
+                       "voomCLR_PoissonAnalyticalVarCalc")
+selected.methods1c <- c("voomCLR_bootParametric", "voomCLR_Pboot_NBweight", "voomCLR_Pboot_PoisWeight")
+
+selected.res.multiK <- 
+  bind_rows(cobraplot.param5K.0bdf %>% 
+              mutate(P=paste0("'P=5'")),
+          cobraplot.param10k.0bdf %>% 
+              mutate(P=paste0("'P=10'")),
+         cobraplot.param20k.0bdf %>% 
+              mutate(P=paste0("'P=20'")),
+         cobraplot.param50k.0bdf %>% 
+              mutate(P=paste0("'P=50'")),
+         cobraplot.param100k.0bdf %>% 
+              mutate(P=paste0("'P=100'"))) %>% 
+  mutate(PP=factor(P,  levels=c("'P=5'", "'P=10'", "'P=20'", "'P=50'", "'P=100'"),
+                  ordered = TRUE),
+         nn= case_when(splitval == "n = 5"~"'n = '~5",
+                       splitval == "n = 10"~"'n = '~10"),
+         nn=factor(nn, levels=c("'n = '~5", "'n = '~10")))
+
+selected.res.c <- selected.res.multiK %>% 
+         subset(method %in% selected.methods1c)%>%
+ mutate(method = case_when(
+                            method=="voomCLR"~"voomCLR (empirical weights & no uncertainity correction)",
+                            method=="voomCLR_bootNonParametric"~"voomCLR (empirical weights & nonparametric bootstrap)",
+                            method=="voomCLR_bootParametric"~"voomCLR (empirical weights & parametric bootstrap)",
+                            method=="voomCLR_NBAnalyticalVarCalc"~"voomCLR (NB analytical weights & no uncertainity correction)",
+                            method=="voomCLR_PoissonAnalyticalVarCalc"~
+                              "voomCLR (Poisson analytical weight & no uncertainity correction)",
+                            method=="voomCLR_NPboot_NBweight"~
+                              "voomCLR (NB analytical weights & nonparametric bootstrap)",
+                            method=="voomCLR_NPboot_PoisWeight"~
+                              "voomCLR (Poisson analytical weights & nonparametric bootstrap)",
+                            method=="voomCLR_Pboot_NBweight"~
+                              "voomCLR (NB analytical weights & parametric bootstrap)",
+                            method=="voomCLR_Pboot_PoisWeight"~
+                              "voomCLR (Poisson analytical weights & parametric bootstrap)",
+                            TRUE~method),
+         method = factor(method, 
+                         levels=c("voomCLR (empirical weights & no uncertainity correction)", 
+                                  "voomCLR (empirical weights & nonparametric bootstrap)", 
+                                  "voomCLR (empirical weights & parametric bootstrap)", 
+                                  "voomCLR (NB analytical weights & no uncertainity correction)",  
+                                  "voomCLR (Poisson analytical weight & no uncertainity correction)",
+                                  "voomCLR (NB analytical weights & nonparametric bootstrap)",
+                                  "voomCLR (Poisson analytical weights & nonparametric bootstrap)",
+                                  "voomCLR (NB analytical weights & parametric bootstrap)",
+                                  "voomCLR (Poisson analytical weights & parametric bootstrap)"),
+                         labels=c("voomCLR (empirical weights &\nno uncertainity correction)", 
+                                  "voomCLR (empirical weights &\nnonparametric bootstrap)", 
+                                  "voomCLR (empirical weights & parametric bootstrap)", 
+                                  "voomCLR (NB analytical weights &\nno uncertainity correction)",  
+                                  "voomCLR (Poisson analytical weight &\nno uncertainity correction)",
+                                  "voomCLR (NB analytical weights &\nnonparametric bootstrap)",
+                                  "voomCLR (Poisson analytical weights &\nnonparametric bootstrap)",
+                                  "voomCLR (NB analytical weights & parametric bootstrap)",
+                                  "voomCLR (Poisson analytical weights & parametric bootstrap)")))
+
+ 
+
+sel.plt1c <- ggplot(selected.res.c %>%
+    mutate(nomFDR = paste0(as.numeric(gsub("thr", "", thr))*100, "%"),
+           nomFDR=factor(nomFDR, levels=c("1%", "5%", "10%"))),
+       aes(x=FDR, y=TPR, colour = method))+
+
+  geom_vline(xintercept = c(0.01, 0.05, 0.1), col="gray", lty=2)+
+  geom_text(data=data.frame(x=c(0.01, 0.05, 0.1),
+                            y=rep(0.975, 3), txt=c("1%", "5%", "10%")),
+            aes(x=x+0.01,y=y, label=txt), size=3, angle=90, inherit.aes = FALSE)+
+
+  geom_line(linewidth=1)+
+  geom_point(size=2, aes(shape=nomFDR))+
+  geom_point(size=1.8, aes(shape=nomFDR), fill="white")+
+  scale_shape_manual(values = c(21, 22, 24))+
+  facet_grid(nn~PP, labeller=label_parsed)+
+  theme_bw() +
+  theme(strip.text.x = element_text(size=14),
+        strip.text.y = element_text(size=13),
+        legend.position = "top")+
+  labs(shape="nominal FDR")+
+  guides(fill=guide_legend(override.aes = list(size=3)),
+         colour=guide_legend(ncol = 1 , theme = theme(legend.title.position = "top"), 
+                             override.aes = list(size=3)),
+         shape=guide_legend(ncol = 1,  theme = theme(legend.title.position = "top"), 
+                            override.aes = list(size=3)))+
+  ylim(0, 1) 
+
+sel.plt1c
+png("results/Figures/main figures V2/performanceVoomCLRdifferentNPopulations.png", width = 25, 
+    height = 14, units = "cm", res = 300)
+sel.plt1c
+dev.off()
+```
+
+The impact of different components of voomCLR (eBayes, bias-correction and hetroscedasticity correction) on its performance.
+
+```{r}
+selected.methods1b <- c("voomCLR","voomCLR_woB", "voomCLR_woH",  "voomCLR_woB_woH",
+            "voomCLR_woE", "voomCLR_woB_woE",  "voomCLR_woE_woH", "voomCLR_woB_woH_woE")
+
+selected.res.1bfb <- cobraplot.list$cobraplot.0bdf %>% 
+         subset(method %in% selected.methods1b)%>%
+ mutate(method = case_when(
+                            method=="voomCLR"~"voomCLR (empirical weights & no uncertainity correction)",
+                            method=="voomCLR_woB"~"voomCLR (without Bias-correction)", 
+                            method=="voomCLR_woE"~"voomCLR (without eBayes)", 
+                            method=="voomCLR_woH"~"voomCLR (without Hetr.-correction)", 
+                            method=="voomCLR_woB_woE"~"voomCLR (without Bias-correction & eBayes)", 
+                            method=="voomCLR_woB_woH"~"voomCLR (without Bias-correction & Hetr.-correction)", 
+                            method=="voomCLR_woE_woH"~"voomCLR (without eBayes & Hetr.-correction)", 
+                            method=="voomCLR_woB_woH_woE"~"voomCLR (without Bias-correction, eBayes & Hetr.-correction)",
+                            TRUE~method),
+         method = factor(method, 
+                         levels=c("voomCLR (empirical weights & no uncertainity correction)", 
+                                  "voomCLR (without Bias-correction)", 
+                                  "voomCLR (without eBayes)", 
+                                  "voomCLR (without Hetr.-correction)",
+                                  "voomCLR (without Bias-correction & eBayes)",
+                                  "voomCLR (without Bias-correction & Hetr.-correction)",
+                                  "voomCLR (without eBayes & Hetr.-correction)",
+                                  "voomCLR (without Bias-correction, eBayes & Hetr.-correction)"),
+                         labels=c("voomCLR (*)", 
+                                  "voomCLR (without Bias-correction, **)", 
+                                  "voomCLR (without eBayes *)", 
+                                  "voomCLR (without Hetr.-correction ***)",
+                                  "voomCLR (without Bias-correction & eBayes **)",
+                                  "voomCLR (without Bias-correction & Hetr.-correction)",
+                                  "voomCLR (without eBayes & Hetr.-correction ***)",
+                                  "voomCLR (without Bias-correction, eBayes & Hetr.-correction)"),
+                         ordered = TRUE),
+         sim.method=case_when(sim.method=="nonparametric"~"non-parametric simulation", 
+                              TRUE~"parametric simulation"))
+
+
+
+sel.plt1b <- ggplot(selected.res.1bfb %>%
+                      #subset(sim.method=="non-parametric simulation") %>%
+    mutate(nomFDR = paste0(as.numeric(gsub("thr", "", thr))*100, "%"),
+           nomFDR=factor(nomFDR, levels=c("1%", "5%", "10%"))),
+       aes(x=FDR, y=TPR, colour = method))+
+
+  geom_vline(xintercept = c(0.01, 0.05, 0.1), col="gray", lty=2)+
+  geom_text(data=data.frame(x=c(0.01, 0.05, 0.1),
+                            y=rep(0.975, 3), txt=c("1%", "5%", "10%")),
+            aes(x=x+0.01,y=y, label=txt), size=3, angle=90, inherit.aes = FALSE)+
+
+  geom_line(linewidth=1)+
+  geom_point(size=2, aes(shape=nomFDR))+
+  geom_point(size=1.8, aes(shape=nomFDR), fill="white")+
+  scale_shape_manual(values = c(21, 22, 24))+
+  scale_color_brewer(palette ="Dark2")+
+  # geom_point(data = selected.res.dfb %>%
+  #              subset(thr=="thr0.05"),
+  #            size=3, shape=21, fill="white", stroke=1) +
+  # geom_point(data = selected.res.dfb %>%
+  #              subset(thr=="thr0.05"),
+  #        aes(fill=method), size=0,stroke=0)+
+  facet_grid(sim.method~splitval)+
+  theme_bw() +
+  theme(strip.text.x = element_text(size=14),
+        strip.text.y = element_text(size=13))+
+  labs(shape="nominal FDR",
+       caption = "NB: (*) with empirical weights & no uncertainity correction
+       (**) with empirical weights
+       (***) no uncertainity correction")+
+  guides(fill=guide_legend(override.aes = list(size=3)))
+
+sel.plt1b
+# png("results/Figures/main figures V2/performanceVoomCLRvariants.png", width = 27, height = 14, units = "cm", res = 300)
+# sel.plt1b
+# dev.off()
+```
+
+
+## Main Figures: Performance of voomCLR with other methods
+
+Performance of voomCLR and other selected methods
+
+```{r}
+selected.methods2 <- c("voomCLR_bootParametric", "linDA", "NBGLM_TMB", "LMclr", "edgeR", "DESeq2",
+                      "limmaVoom",  "propeller_asin",  "propeller_logit", "dcats")
+
+selected.res.2dfb <- cobraplot.list$cobraplot.0bdf %>% 
+         subset(method %in% selected.methods2)%>%
+  mutate(method = case_when(method=="voomCLR_bootParametric"~"voomCLR", 
+                            method=="LMclr"~"LM_clr", 
+                            method=="NBGLM_TMB"~"NB_GLM (TMB)", 
+                            method=="limmaVoom"~"limma-voom", 
+                            method=="propeller_logit"~"propeller (logit)",
+                            method=="propeller_asin"~"propeller (arcsine)",
+                            method=="dcats"~"DCATS",
+                            TRUE~method),
+         method = factor(method, levels=c("voomCLR", "linDA",  "LM_clr", 
+                                          "NB_GLM (TMB)","edgeR", "DESeq2","limma-voom",
+                                          "DCATS", "propeller (logit)",  "propeller (arcsine)")),
+         sim.method=case_when(sim.method=="nonparametric"~"non-parametric simulation", 
+                              TRUE~"parametric simulation")) 
+
+
+
+sel.plt2b <- ggplot(selected.res.2dfb %>%
+    mutate(nomFDR = paste0(as.numeric(gsub("thr", "", thr))*100, "%"),
+           nomFDR=factor(nomFDR, levels=c("1%", "5%", "10%"))),
+       aes(x=FDR, y=TPR, colour = method))+
+
+  geom_vline(xintercept = c(0.01, 0.05, 0.1), col="gray", lty=2)+
+  geom_text(data=data.frame(x=c(0.01, 0.05, 0.1),
+                            y=rep(0.95, 3), txt=c("1%", "5%", "10%")),
+            aes(x=x+0.02,y=y, label=txt), size=3, angle=90, inherit.aes = FALSE)+
+
+  geom_line(linewidth=1)+
+  geom_point(size=2, aes(shape=nomFDR))+
+  geom_point(size=1.8, aes(shape=nomFDR), fill="white")+
+  scale_shape_manual(values = c(21, 22, 24))+
+  # geom_point(data = selected.res.dfb %>%
+  #              subset(thr=="thr0.05"),
+  #            size=3, shape=21, fill="white", stroke=1) +
+  # geom_point(data = selected.res.dfb %>%
+  #              subset(thr=="thr0.05"),
+  #        aes(fill=method), size=0,stroke=0)+
+  facet_grid(sim.method~splitval)+
+  theme_bw() +
+  theme(strip.text.x = element_text(size=13),
+        strip.text.y = element_text(size=12))+
+  labs(shape="nominal FDR")+
+  guides(fill=guide_legend(override.aes = list(size=3))) 
+
+sel.plt2b
+# png("results/Figures/main figures V2/performanceVoomCLRversusOtherMethods.png", width = 22, height = 14, units = "cm", res = 300)
+# sel.plt2b
+# dev.off()
+```
+
+Performance of voomCLR and other selected methods at different level of variability using parametric simulation.
+
+```{r}
+selected.methods2 <- c("voomCLR_Pboot_NBweight", "linDA", "NBGLM_TMB", "LMclr", "edgeR", "DESeq2",
+                      "limmaVoom",  "propeller_asin",  "propeller_logit", "dcats")
+
+selected.res.varaiblity <- 
+  bind_rows(cobraplot.paramlupus.0bdf.lowV %>% 
+              mutate(varGroup=paste0("'low var. ('~gamma~'='~1.5~')'")),
+          cobraplot.paramlupus.0bdf.medV%>% 
+              mutate(varGroup=paste0("'medium var. ('~gamma~'='~1.0~')'")),
+          cobraplot.paramlupus.0bdf.highV%>% 
+              mutate(varGroup=paste0("'high var. ('~gamma~'='~0.25~')'"))) %>% 
+  mutate(varGroup=factor(varGroup, 
+                         levels=c("'low var. ('~gamma~'='~1.5~')'",
+                                  "'medium var. ('~gamma~'='~1.0~')'",
+                                  "'high var. ('~gamma~'='~0.25~')'"),
+                         ordered = TRUE),
+         nn= case_when(splitval == "n = 5"~"'n = '~5",
+                       splitval == "n = 10"~"'n = '~10",
+                       splitval == "n = 20"~"'n = '~20"),
+         nn=factor(nn, levels=c("'n = '~5", "'n = '~10", "'n = '~20")))
+
+selected.res.b <- selected.res.varaiblity %>% 
+         subset(method %in% selected.methods2)%>%
+ mutate(method = case_when(method=="voomCLR_Pboot_NBweight"~"voomCLR", 
+                            method=="LMclr"~"LM_clr", 
+                            method=="NBGLM_TMB"~"NB_GLM (TMB)", 
+                            method=="limmaVoom"~"limma-voom", 
+                            method=="propeller_logit"~"propeller (logit)",
+                            method=="propeller_asin"~"propeller (arcsine)",
+                            method=="dcats"~"DCATS",
+                            TRUE~method),
+         method = factor(method, levels=c("voomCLR", "linDA",  "LM_clr", 
+                                          "NB_GLM (TMB)","edgeR", "DESeq2","limma-voom",
+                                          "DCATS", "propeller (logit)",  "propeller (arcsine)")))
+
+ 
+
+sel.plt1b <- ggplot(selected.res.b %>%
+    mutate(nomFDR = paste0(as.numeric(gsub("thr", "", thr))*100, "%"),
+           nomFDR=factor(nomFDR, levels=c("1%", "5%", "10%"))),
+       aes(x=FDR, y=TPR, colour = method))+
+
+  geom_vline(xintercept = c(0.01, 0.05, 0.1), col="gray", lty=2)+
+  geom_text(data=data.frame(x=c(0.01, 0.05, 0.1),
+                            y=rep(0.975, 3), txt=c("1%", "5%", "10%")),
+            aes(x=x+0.01,y=y, label=txt), size=3, angle=90, inherit.aes = FALSE)+
+
+  geom_line(linewidth=1)+
+  geom_point(size=2, aes(shape=nomFDR))+
+  geom_point(size=1.8, aes(shape=nomFDR), fill="white")+
+  scale_shape_manual(values = c(21, 22, 24))+
+  facet_grid(nn~varGroup, labeller=label_parsed)+
+  theme_bw() +
+  theme(strip.text.x = element_text(size=14),
+        strip.text.y = element_text(size=13))+
+  labs(shape="nominal FDR")+
+  guides(fill=guide_legend(override.aes = list(size=3)))
+
+sel.plt1b
+# png("results/Figures/main figures V2/performanceVoomCLRandOthersDifferentVariability.png", width = 25, height = 14, units = "cm", res = 300)
+# sel.plt1b
+# dev.off()
+```
+
+Performance of voomCLR and other selected methods at different number of cell populations
+
+```{r}
+selected.methods2 <- c("voomCLR_Pboot_NBweight", "linDA", "NBGLM_TMB", "LMclr", "edgeR", "DESeq2",
+                      "limmaVoom",  "propeller_asin",  "propeller_logit", "dcats")
+
+selected.res.multiK <- 
+  bind_rows(cobraplot.param5K.0bdf %>% 
+              mutate(P=paste0("'P=5'")),
+          cobraplot.param10k.0bdf %>% 
+              mutate(P=paste0("'P=10'")),
+         cobraplot.param20k.0bdf %>% 
+              mutate(P=paste0("'P=20'")),
+         cobraplot.param50k.0bdf %>% 
+              mutate(P=paste0("'P=50'")),
+         cobraplot.param100k.0bdf %>% 
+              mutate(P=paste0("'P=100'"))) %>% 
+  mutate(PP=factor(P,  levels=c("'P=5'", "'P=10'", "'P=20'", "'P=50'", "'P=100'"),
+                  ordered = TRUE),
+         nn= case_when(splitval == "n = 5"~"'n = '~5",
+                       splitval == "n = 10"~"'n = '~10"),
+         nn=factor(nn, levels=c("'n = '~5", "'n = '~10")))
+
+selected.res.d <- selected.res.multiK %>% 
+         subset(method %in% selected.methods2) %>%
+ mutate(method = case_when(method=="voomCLR_Pboot_NBweight"~"voomCLR", 
+                            method=="LMclr"~"LM_clr", 
+                            method=="NBGLM_TMB"~"NB_GLM (TMB)", 
+                            method=="limmaVoom"~"limma-voom", 
+                            method=="propeller_logit"~"propeller (logit)",
+                            method=="propeller_asin"~"propeller (arcsine)",
+                            method=="dcats"~"DCATS",
+                            TRUE~method),
+         method = factor(method, levels=c("voomCLR", "linDA",  "LM_clr", 
+                                          "NB_GLM (TMB)","edgeR", "DESeq2","limma-voom",
+                                          "DCATS", "propeller (logit)",  "propeller (arcsine)")))
+
+ 
+
+sel.plt1d <- ggplot(selected.res.d %>%
+    mutate(nomFDR = paste0(as.numeric(gsub("thr", "", thr))*100, "%"),
+           nomFDR=factor(nomFDR, levels=c("1%", "5%", "10%"))),
+       aes(x=FDR, y=TPR, colour = method))+
+
+  geom_vline(xintercept = c(0.01, 0.05, 0.1), col="gray", lty=2)+
+  geom_text(data=data.frame(x=c(0.01, 0.05, 0.1),
+                            y=rep(0.975, 3), txt=c("1%", "5%", "10%")),
+            aes(x=x+0.01,y=y, label=txt), size=3, angle=90, inherit.aes = FALSE)+
+
+  geom_line(linewidth=1)+
+  geom_point(size=2, aes(shape=nomFDR))+
+  geom_point(size=1.8, aes(shape=nomFDR), fill="white")+
+  scale_shape_manual(values = c(21, 22, 24))+
+  facet_grid(nn~PP, labeller=label_parsed)+
+  theme_bw() +
+  theme(strip.text.x = element_text(size=14),
+        strip.text.y = element_text(size=13))+
+  labs(shape="nominal FDR")+
+  guides(fill=guide_legend(override.aes = list(size=3)))
+
+sel.plt1d
+png("results/Figures/main figures V2/performanceVoomCLRandOthersDifferentNPopulations.png", width = 30, height = 14, units = "cm", res = 300)
+sel.plt1d
+dev.off()
+```
+
+Performance of voomCLR and other methods using Breast Cancer data (non-parametric simulation)
+
+```{r}
+selected.methods2 <- c("voomCLR_Pboot_NBweight", "linDA", "NBGLM_TMB",
+                       "LMclr", "edgeR", "DESeq2",
+                      "limmaVoom",  "propeller_asin",  "propeller_logit", "dcats")
+
+
+selected.res.e<- cobraplot.brst.0bdf.LWrand %>% 
+         subset(method %in% selected.methods2) %>%
+ mutate(method = case_when(method=="voomCLR_Pboot_NBweight"~"voomCLR", 
+                            method=="LMclr"~"LM_clr", 
+                            method=="NBGLM_TMB"~"NB_GLM (TMB)", 
+                            method=="limmaVoom"~"limma-voom", 
+                            method=="propeller_logit"~"propeller (logit)",
+                            method=="propeller_asin"~"propeller (arcsine)",
+                            method=="dcats"~"DCATS",
+                            TRUE~method),
+         method = factor(method, levels=c("voomCLR", "linDA",  "LM_clr", 
+                                          "NB_GLM (TMB)","edgeR", "DESeq2","limma-voom",
+                                          "DCATS", "propeller (logit)", 
+                                          "propeller (arcsine)")),
+         nn= case_when(splitval == "n = 5"~"'n = '~5",
+                       splitval == "n = 10"~"'n = '~10"),
+         nn=factor(nn, levels=c("'n = '~5", "'n = '~10")))
+
+ 
+
+sel.plt1e <- ggplot(selected.res.e %>%
+    mutate(nomFDR = paste0(as.numeric(gsub("thr", "", thr))*100, "%"),
+           nomFDR=factor(nomFDR, levels=c("1%", "5%", "10%"))),
+       aes(x=FDR, y=TPR, colour = method))+
+
+  geom_vline(xintercept = c(0.01, 0.05, 0.1), col="gray", lty=2)+
+  geom_text(data=data.frame(x=c(0.01, 0.05, 0.1),
+                            y=rep(0.975, 3), txt=c("1%", "5%", "10%")),
+            aes(x=x+0.01,y=y, label=txt), size=3, angle=90, inherit.aes = FALSE)+
+
+  geom_line(linewidth=1)+
+  geom_point(size=2, aes(shape=nomFDR))+
+  geom_point(size=1.8, aes(shape=nomFDR), fill="white")+
+  scale_shape_manual(values = c(21, 22, 24))+
+  facet_grid(~nn, labeller=label_parsed)+
+  theme_bw() +
+  theme(strip.text.x = element_text(size=14),
+        strip.text.y = element_text(size=13))+
+  labs(shape="nominal FDR")+
+  guides(fill=guide_legend(override.aes = list(size=3)))+
+  ylim(0, 0.5)
+
+sel.plt1e
+
+# png("results/Figures/main figures V2/performanceVoomCLRandOthersBreastCancerData.png", width = 25, height = 12, units = "cm", res = 300)
+# sel.plt1e
+# dev.off()
+```
+
+## Multiple K
+
+```{r, fig.width=12, fig.height=10, eval=FALSE}
+cobraplotMultiK.1df2 <- cobraplotMultiK.1df %>%
+  mutate(method = case_when(method=="voomCLR_bootNonParametric"~"voomCLR (with nonparametric bootstrap)",
+                            method=="voomCLR_bootParametric"~"voomCLR (with parametric bootstrap)",
+                            method=="voomCLR_NBAnalyticalVarCalc"~"voomCLR (with NB analytical weights)",
+                            method=="voomCLR_PoissonAnalyticalVarCalc"~"voomCLR (with Poisson analytical weight)",
+                            method=="voomCLR_NPboot_NBweight"~"voomCLR (with nonparametric bootstrap & NB analytical weights)",
+                            method=="voomCLR_NPboot_PoisWeight"~"voomCLR (with nonparametric bootstrap & Poisson analytical weights)",
+                            method=="voomCLR_Pboot_NBweight"~"voomCLR (with parametric bootstrap & NB analytical weights)",
+                            method=="voomCLR_Pboot_PoisWeight"~"voomCLR (with parametric bootstrap & Poisson analytical weights)",
+                            TRUE~method),
+         method = factor(method, levels=c("voomCLR", "voomCLR (with nonparametric bootstrap)",
+                                          "voomCLR (with parametric bootstrap)",
+                                          "voomCLR (with NB analytical weights)",
+                                          "voomCLR (with Poisson analytical weight)",
+                                          "voomCLR (with nonparametric bootstrap & NB analytical weights)",
+                                          "voomCLR (with nonparametric bootstrap & Poisson analytical weights)",
+                                          "voomCLR (with parametric bootstrap & NB analytical weights)",
+                                          "voomCLR (with parametric bootstrap & Poisson analytical weights)")))
+
+cobraplotMultiK.1bdf2 <- cobraplotMultiK.1bdf %>%
+  mutate(method = case_when(method=="voomCLR_bootNonParametric"~"voomCLR (with nonparametric bootstrap)",
+                            method=="voomCLR_bootParametric"~"voomCLR (with parametric bootstrap)",
+                            method=="voomCLR_NBAnalyticalVarCalc"~"voomCLR (with NB analytical weights)",
+                            method=="voomCLR_PoissonAnalyticalVarCalc"~"voomCLR (with Poisson analytical weight)",
+                            method=="voomCLR_NPboot_NBweight"~"voomCLR (with nonparametric bootstrap & NB analytical weights)",
+                            method=="voomCLR_NPboot_PoisWeight"~"voomCLR (with nonparametric bootstrap & Poisson analytical weights)",
+                            method=="voomCLR_Pboot_NBweight"~"voomCLR (with parametric bootstrap & NB analytical weights)",
+                            method=="voomCLR_Pboot_PoisWeight"~"voomCLR (with parametric bootstrap & Poisson analytical weights)",
+                            TRUE~method),
+         method = factor(method, levels=c("voomCLR", "voomCLR (with nonparametric bootstrap)",
+                                          "voomCLR (with parametric bootstrap)",
+                                          "voomCLR (with NB analytical weights)",
+                                          "voomCLR (with Poisson analytical weight)",
+                                          "voomCLR (with nonparametric bootstrap & NB analytical weights)",
+                                          "voomCLR (with nonparametric bootstrap & Poisson analytical weights)",
+                                          "voomCLR (with parametric bootstrap & NB analytical weights)",
+                                          "voomCLR (with parametric bootstrap & Poisson analytical weights)")))
+
+plt.multKc <- ggplot(cobraplotMultiK.1df2 %>% subset(K %in% c("P=5", "P=20")),  
+                     aes(x=FDR, y=TPR, colour = method))+
+  geom_vline(xintercept = 0.05, lty=2, col="gray", lwd=1)+
+  geom_point(size=0.5)+
+  geom_point(data = cobraplotMultiK.1bdf2 %>% 
+               subset(K %in% c("P=5", "P=20") & thr=="thr0.05"),
+             size=3, shape=21, fill="white", stroke=1)+
+  facet_grid(K~splitval)+
+  geom_point(data = cobraplotMultiK.1bdf2 %>% 
+               subset(K %in% c("P=5", "P=20") & thr=="thr0.05"),
+         aes(fill=method), size=0,stroke=0)+
+  theme_bw() +
+  theme(strip.text = element_text(size=16),
+        legend.position = "top") +
+  guides(fill=guide_legend(override.aes = list(size=4), ncol=3, title.position = "top"),
+         color=guide_legend(override.aes = list(size=4), ncol=3, title.position = "top"))
+
+# plt.multKc
+# png("results/Figures/supplementary figures/performanceAnalyticalAndBootstrap.png", width = 28, height = 22, units = "cm", res = 300)
+# plt.multKc
+# dev.off()
+
+plt.multKcb_boots <- ggplot(cobraplotMultiK.1bdf2 %>% 
+    subset(K %in% c("P=5", "P=20") & 
+             method %in% c("voomCLR", "voomCLR (with nonparametric bootstrap)",
+                           "voomCLR (with parametric bootstrap)")) %>%
+    mutate(nomFDR = paste0(as.numeric(gsub("thr", "", thr))*100, "%"),
+           nomFDR=factor(nomFDR, levels=c("1%", "5%", "10%"), ordered = TRUE)) %>%
+      subset(K %in% c("P=5", "P=20")),  
+                     aes(x=FDR, y=TPR,  colour = method))+
+  geom_vline(xintercept = c(0.01, 0.05, 0.1), col="gray", lty=2)+
+  geom_text(data=data.frame(x=c(0.01, 0.05, 0.1),
+                            y=rep(0.9, 3), txt=c("1%", "5%", "10%")),
+            aes(x=x+0.01,y=y, label=txt), size=3, angle=90, inherit.aes = FALSE)+
+
+  geom_line(linewidth=1.5)+
+  geom_point(size=2.5, aes(shape=nomFDR))+
+  geom_point(size=2.3, aes(shape=nomFDR), fill="white")+
+  scale_shape_manual(values = c(21, 22, 24))+
+  facet_grid(K~splitval)+
+  theme_bw() +
+  labs(shape="nominal FDR")+
+  theme(strip.text = element_text(size=16), legend.position = "right") 
+
+plt.multKcb_boots
+
+# png("results/Figures/supplementary figures/performanceBootstraps.png", width = 28, height = 16, units = "cm", res = 300)
+# plt.multKcb_boots
+# dev.off()
+
+
+plt.multKcb_weights <- ggplot(cobraplotMultiK.1bdf2 %>% 
+    subset(K %in% c("P=5", "P=20") & 
+             method %in% c("voomCLR", "voomCLR (with NB analytical weights)",
+                           "voomCLR (with Poisson analytical weight)",
+                "voomCLR (with nonparametric bootstrap & NB analytical weights)",
+                "voomCLR (with nonparametric bootstrap & Poisson analytical weights)",
+                "voomCLR (with parametric bootstrap & NB analytical weights)",
+                "voomCLR (with parametric bootstrap & Poisson analytical weights)")) %>%
+    mutate(nomFDR = paste0(as.numeric(gsub("thr", "", thr))*100, "%"),
+           nomFDR=factor(nomFDR, levels=c("1%", "5%", "10%"), ordered = TRUE)) %>%
+      subset(K %in% c("P=5", "P=20")),  
+                     aes(x=FDR, y=TPR,  colour = method))+
+  geom_vline(xintercept = c(0.01, 0.05, 0.1), col="gray", lty=2)+
+  geom_text(data=data.frame(x=c(0.01, 0.05, 0.1),
+                            y=rep(0.9, 3), txt=c("1%", "5%", "10%")),
+            aes(x=x+0.01,y=y, label=txt), size=3, angle=90, inherit.aes = FALSE)+
+
+  geom_line(linewidth=1.5)+
+  geom_point(size=2.5, aes(shape=nomFDR))+
+  geom_point(size=2.3, aes(shape=nomFDR), fill="white")+
+  scale_shape_manual(values = c(21, 22, 24))+
+  facet_grid(K~splitval)+
+  theme_bw() +
+  labs(shape="nominal FDR")+
+  theme(strip.text = element_text(size=16), legend.position = "top") +
+  guides(shape=guide_legend(override.aes = list(size=4), ncol=1, title.position = "top"),
+         color=guide_legend(override.aes = list(size=4), ncol=2, title.position = "top"))
+
+plt.multKcb_weights
+
+# png("results/Figures/supplementary figures/performanceAnalyticalAndBootstrap.png", width = 28, height = 20, units = "cm", res = 300)
+# plt.multKcb_weights
+# dev.off()
+```
+
+## Higher fraction of DA populations
+
+```{r}
+res_files_paramSimMultDA <- list.files(paste0(res.dir, "parametricSimulation/multiplePropDA/"))
+simRes_all_paramSimMultDA<- lapply(res_files_paramSimMultDA, function(x){
+  readRDS(paste0(res.dir, "parametricSimulation/multiplePropDA/", x))
+}) %>% bind_rows() %>% 
+  group_by(population, method, n, var_scale, pDA) %>%
+  mutate(itrID = paste0(population, "_", gsub(" = ", "",n), "_pDA",  pDA, "_",sim_itr)) %>%
+  ungroup()
+```
+
+```{r n10}
+pval.df <- simRes_all_paramSimMultDA %>% 
+  subset(n=="n = 10") %>%
+  dplyr::select(population, method, n, pDA, pval, itrID) %>%
+  pivot_wider(id_cols = c(population, n, pDA, itrID), 
+              names_from = method, values_from = pval) %>% 
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, pDA))
+
+padj.df <- simRes_all_paramSimMultDA %>% 
+   subset(n=="n = 10") %>%
+  dplyr::select(population, method, n, pDA, padj, itrID) %>%
+  pivot_wider(id_cols = c(population, n, pDA, itrID), 
+              names_from = method, values_from = padj) %>%
+  column_to_rownames("itrID") %>%
+  dplyr::select(-c(population, n, pDA)) 
+
+
+truDA.df <- simRes_all_paramSimMultDA %>% 
+   subset(n=="n = 10") %>%
+  dplyr::select(population, method, n, pDA, trueDA, itrID) %>%
+  pivot_wider(id_cols = c(population, n, pDA, itrID),
+              names_from = method, values_from = trueDA) %>%
+  column_to_rownames("itrID") %>%
+  mutate(trueDA=as.numeric(NBGLM))
+
+cobradat.param <- COBRAData(pval = pval.df, padj = padj.df, truth = truDA.df)
+cobraperf.param <- calculate_performance(cobradat.param, maxsplit=6,
+                                           binary_truth = "trueDA", 
+                                           splv = "pDA",  thrs = c(0.01, 0.05, 0.1))
+cobraplot.param.dataForPlot.multiPDA <- prepare_data_for_plot(cobraperf.param,
+                                                colorscheme = "Dark2",  facetted = TRUE)
+ 
+cobraplot.param.multiPDA <- cobraplot.param.dataForPlot.multiPDA@fdrtprcurve %>%
+  subset(splitval %in% c("pDA:0.1", "pDA:0.5", "pDA:0.75", "pDA:0.85")) %>%
+  mutate(splitval = gsub("pDA:", "pDA = ", splitval),
+         splitval = factor(splitval, levels = c("pDA = 0.1", "pDA = 0.5", 
+                                                "pDA = 0.75", "pDA = 0.85"),
+                           labels = c("pDA = 10%", "pDA = 50%", 
+                                                "pDA = 75%", "pDA = 85%"),
+                           ordered = TRUE))
+cobraplot.param.multiPDAb <- cobraplot.param.dataForPlot.multiPDA@fdrtpr %>%
+  subset(splitval %in% c("pDA:0.1", "pDA:0.5", "pDA:0.75", "pDA:0.85")) %>%
+  mutate(splitval = gsub("pDA:", "pDA = ", splitval),
+         splitval = factor(splitval, levels = c("pDA = 0.1", "pDA = 0.5", 
+                                                "pDA = 0.75", "pDA = 0.85"),
+                           labels = c("pDA = 10%", "pDA = 50%", 
+                                                "pDA = 75%", "pDA = 85%"),
+                           ordered = TRUE))
+```
+
+```{r, fig.width=12, fig.height=5}
+selected.methods.multiPDAb <- c("voomCLR_Pboot_NBweight", "linDA")
+
+selected.res.multiPDA <- cobraplot.param.multiPDA %>% 
+         subset(method %in% selected.methods.multiPDAb)%>%
+  mutate(method = case_when(method=="voomCLR_Pboot_NBweight"~"voomCLR",
+                            TRUE~method),
+         method = factor(method, levels=c("voomCLR", "linDA"))) 
+
+
+selected.res.multiPDAb <- cobraplot.param.multiPDAb %>% 
+         subset(method %in% selected.methods.multiPDAb)%>%
+  mutate(method = case_when(method=="voomCLR_Pboot_NBweight"~"voomCLR",
+                            TRUE~method),
+         method = factor(method, levels=c("voomCLR", "linDA"))) 
+
+
+sel.plt2a <- ggplot(selected.res.multiPDA, 
+       aes(x=FDR, y=TPR, colour = method))+
+  geom_vline(xintercept = 0.05, lty=2, col="gray", lwd=1)+
+  geom_point(size=0.5, shape=20)+
+  # geom_point(data = selected.res.multiPDAb %>%
+  #              subset(thr=="thr0.05"),
+  #            size=3, shape=21, fill="white", stroke=1) +
+  # geom_point(data = selected.res.multiPDAb %>%
+  #              subset(thr=="thr0.05"), 
+  #   aes(fill=method), size=0,stroke=0)+
+  # geom_text(data=data.frame(x=c(0.05),
+  #                           y=rep(0.975), txt=c("5%")),
+  #           aes(x=x+0.05,y=y, label=txt), size=3, angle=90, inherit.aes = FALSE)+
+  facet_grid(.~splitval)+
+  theme_bw() +
+  theme(strip.text.x = element_text(size=16),
+        strip.text.y = element_text(size=13))+
+  guides(fill=guide_legend(override.aes = list(size=3)))+
+  labs(title = "B")
+ 
+ 
+
+sel.plt2b <- ggplot(selected.res.multiPDAb %>%
+    mutate(nomFDR = paste0(as.numeric(gsub("thr", "", thr))*100, "%"),
+           nomFDR=factor(nomFDR, levels=c("1%", "5%", "10%"))),
+       aes(x=FDR, y=TPR, colour = method))+
+
+  geom_vline(xintercept = c(0.01, 0.05, 0.1), col="gray", lty=2)+
+  geom_text(data=data.frame(x=c(0.01, 0.05, 0.1),
+                            y=rep(0.975, 3), txt=c("1%", "5%", "10%")),
+            aes(x=x+0.01,y=y, label=txt), size=3, angle=90, inherit.aes = FALSE)+
+
+  geom_line(linewidth=1)+
+  geom_point(size=2, aes(shape=nomFDR))+
+  geom_point(size=1.8, aes(shape=nomFDR), fill="white")+
+  scale_shape_manual(values = c(21, 22, 24))+
+  facet_grid(~splitval)+
+  theme_bw() +
+  theme(strip.text.x = element_text(size=14),
+        strip.text.y = element_text(size=13))+
+  labs(shape="nominal FDR", title = "A")+
+  guides(fill=guide_legend(override.aes = list(size=3)))
+
+
+cmbnd.pl=ggpubr::ggarrange(sel.plt2b, sel.plt2a, ncol=1)
+
+png("results/Figures/supplementary figures/performanceVoomCLRandLndAforHighFractionofDAppl.png", width = 23, height = 16, units = "cm", res = 300)
+cmbnd.pl
+dev.off()
+
+    
+```

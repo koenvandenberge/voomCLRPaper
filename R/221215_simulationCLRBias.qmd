@@ -311,10 +311,20 @@ vLupus <- voomCLR::voomCLR(counts = t(lupusHealthy1CountMat),
 clrMatLupus <- vLupus$E
 clrBarLupus <- rowMeans(clrMatLupus)
 varClrLupus <- rowVars(clrMatLupus)
-plot(x=clrBarLupus, y=varClrLupus, ylim=c(0, 3))
+plot(x=clrBarLupus, y=varClrLupus, ylim=c(0, 1.5))
+## Poisson varaince
 estVarLupusPoisson <- ((P-1)/P)^2 * (1/yBarLupus)
 oo <- order(clrBarLupus)
 lines(x=clrBarLupus[oo], y=estVarLupusPoisson[oo], col="steelblue")
+## NB variance: common dispersion
+library(edgeR)
+d <- DGEList(counts=t(lupusHealthy1CountMat))
+d <- calcNormFactors(d)
+d <- estimateGLMCommonDisp(d, design=designLupus)
+d$common.dispersion
+estVarLupusNBCommon <- ((P-1)/P)^2 * (1/yBarLupus + d$common.dispersion)
+lines(x=clrBarLupus[oo], y=estVarLupusNBCommon[oo], col="orange")
+## NB variance: cell type specific dispersion
 library(glmmTMB)
 sigmaVec <- c()
 for(kk in 1:nrow(t(lupusHealthy1CountMat))){
@@ -329,7 +339,7 @@ lines(x=clrBarLupus[oo], y=estVarLupusNB[oo], col="darkseagreen3")
 
 ```
 
-# Composite figure
+# Composite figure (lupus)
 
 ```{r}
 library(ggplot2)
@@ -397,5 +407,62 @@ pMVAll <- plot_grid(pMVCount, pMVCLR, pMVCountLupus, pMVCLRLupus,
           labels = letters[2:5])
 pAll <- plot_grid(pBias, pMVAll, labels=c(letters[1],NULL), ncol=2, rel_widths = c(0.6,1))
 pAll
-ggsave("../plots/230524_figure1.pdf", width=11, height=6)
+# ggsave("../plots/230524_figure1.pdf", width=11, height=6)
 ```
+
+# Breast atlas data evaluation of mean-variance
+
+```{r}
+breastCounts <- readRDS("../data/breastAtlas/240715_cellCountMatrixStromal_mammoplastyWT.rds")
+breastMeta <- readRDS("../data/breastAtlas/240715_cellCountMetaStromal_mammoplastyWT.rds")
+
+### Mean-variance of counts
+yBarBreast <- rowMeans(breastCounts)
+varYBreast <- rowVars(breastCounts)
+m <- lm(varYBreast ~ yBarBreast + I(yBarBreast^2))
+gridBreast <- seq(min(yBarBreast), max(yBarBreast), length=50)
+yHatBreast <- predict(m, newdata=data.frame(yBarBreast=gridBreast), type="response")
+yHatBreastPoints <- predict(m, type="response")
+plot(x=yBarBreast, y=varYBreast)
+lines(x=gridBreast, y=yHatBreast, col="steelblue")
+
+### Mean-variance of CLR
+ict <- rep(1, ncol(breastCounts))
+designBreast <- model.matrix(~ -1 + ict)
+vBreast <- voomCLR::voomCLR(counts = breastCounts,
+             design = designBreast,
+             lib.size = NULL)
+clrMatBreast <- vBreast$E
+clrBarBreast <- rowMeans(clrMatBreast)
+varClrBreast <- rowVars(clrMatBreast)
+plot(x=clrBarBreast, y=varClrBreast, ylim=c(0,3))
+## Poisson variance
+estVarBreastPoisson <- ((P-1)/P)^2 * (1/yBarBreast)
+oo <- order(clrBarBreast)
+lines(x=clrBarBreast[oo], y=estVarBreastPoisson[oo], col="steelblue")
+## NB variance: common dispersion
+library(edgeR)
+d <- DGEList(counts=breastCounts)
+d <- calcNormFactors(d)
+d <- estimateGLMCommonDisp(d, design=designBreast)
+d$common.dispersion
+estVarBreastNBCommon <- ((P-1)/P)^2 * (1/yBarBreast + d$common.dispersion)
+lines(x=clrBarBreast[oo], y=estVarBreastNBCommon[oo], col="orange")
+## NB variance: cell type specific dispersion
+library(glmmTMB)
+sigmaVec <- c()
+for(kk in 1:nrow(breastCounts)){
+  mnb <- suppressWarnings(glmmTMB::glmmTMB(breastCounts[,kk] ~ 1, 
+                          family=nbinom2(link = "log")))
+  sigmaVec[kk] <- sigma(mnb)
+}
+estVarBreastNB <- ((P-1)/P)^2 * (1/yBarBreast + 1/sigmaVec)
+lines(x=clrBarBreast[oo], y=estVarBreastNB[oo], col="darkseagreen3")
+
+
+
+
+
+```
+
+

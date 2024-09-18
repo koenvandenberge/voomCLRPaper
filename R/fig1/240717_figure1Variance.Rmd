@@ -1,0 +1,25 @@
+---
+title: 'figure 1: variance'
+author: "Koen Van den Berge"
+date: "2024-07-17"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+
+```{r}
+ttAsianVarsLong <- readRDS("../../data/240715_ttAsianVarsLong.rds")
+ttAsianVarsLong$varComponent <- factor(ttAsianVarsLong$varComponent, levels=c("var.coef", "var.mode", "cov.mode"))
+ggplot(ttAsianVarsLong, aes(x=cellType, y=value, group=varComponent, fill=varComponent)) +
+  geom_col(position="dodge") +
+  theme_classic() +
+  xlab("Cell type") +
+  ylab("Variance component value") +
+  scale_fill_discrete(name="Variance component", labels=c(expression("Variance " ~ hat(beta) * " "),
+                                                          "Variance mode",
+                                                          "Covariance"))
+  
+```
+

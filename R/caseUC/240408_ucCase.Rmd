@@ -1,0 +1,546 @@
+---
+title: "Untitled"
+author: "Koen Van den Berge"
+date: "2024-04-03"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+
+**TO DO**
+I have asked Alemu to run a simulation with P=50 and n=15 to match the characteristics of this dataset.
+Note that both the original paper and scCODA discover many populations to be significantly differentially abundant. In such a scenario, I expect that the mode will be highly uncertain (CHECK THIS in sims), and the bootstrapping may become hurtful. The bias correction may also become hurtful, so I have asked to run simulations including voomCLR without bias correction.
+
+At 85% DA no bias correction performs better https://jnj-my.sharepoint.com/:w:/p/aassefa_its/EViSXpMUGDFIl3uzh6a8wbQBYpGhkgiKCjNcHoKh3Q9rWw?e=qY9C7w
+
+
+
+
+# Import and preprocess data
+
+Paired samples were obtained from each subject.
+For UC patients, these were inflamed / UC tissue (`"inflamed"`) and adjacent normal tissue (`"non-inflamed"`). Similarly, for healthy patients two location-matched samples were obtained.
+Note they do not expect the non-inflamed samples to be similar to the healthy samples. From the paper: "We confirmed that expression of an inflammation-associated gene set increased from healthy to non-inflamed to inflamed samples".
+
+Question of interest:
+
+ - Within epithelial / lamina propria locations separately: Healthy vs non-inflamed vs inflamed effect. Model for each cell type includes random effect for patient, and 'Health' fixed effect. Allows us to confirm and assess systematic changes when moving from healthy > non-inflamed > inflamed.
+
+
+```{r}
+library(tidyverse)
+data <- read.table("~/Downloads/all.meta2.txt", sep="\t", skip=2)
+colnames(data) <- c("NAME", "Cluster",	"nGene",	"nUMI",	"Subject",	"Health",	"Location",	"Sample")
+
+table(data$Cluster)
+table(data$Subject) # 30 patients
+#table(data$Subject, data$Sample)
+## For UC patients: inflamed (UC) and adjacent non-inflamed tissue.
+table(data$Subject, data$Health)
+```
+
+
+# Disease effect in epithelial cells
+
+## EDA
+
+```{r}
+dataEpi <- data[data$Location == "Epi",]
+
+dataEpi <- dataEpi %>%
+  group_by(Sample, Cluster, Subject, Health) %>%
+  summarize(nCells = n()) 
+
+library(tidyverse)
+dataEpiWide <- pivot_wider(dataEpi,
+                           id_cols = c("Sample", "Subject", "Health"),
+                           names_from = "Cluster",
+                           values_from = "nCells")
+dataEpiWide[is.na(dataEpiWide)] <- 0
+
+dataEpiCountMatrix <- as.matrix(t(dataEpiWide[,-c(1:3)]))
+colnames(dataEpiCountMatrix) <- dataEpiWide$Sample
+dataEpiMeta <- dataEpiWide[,1:3]
+
+keep <- rowSums(dataEpiCountMatrix > 4) >= 6
+dataEpiCountMatrix <- dataEpiCountMatrix[keep,]
+dataEpi <- dataEpi[dataEpi$Cluster %in% rownames(dataEpiCountMatrix),]
+```
+
+```{r, fig.height=12, fig.width=9}
+dataEpi2 <- dataEpi %>%
+  ungroup() %>%
+  group_by(Sample) %>%
+  mutate(nCellTypes = n(),
+         geoMean = prod(nCells+1)^(1/nCellTypes),
+         CLR = log((nCells+1) / geoMean ))
+dataEpi2$Health <- factor(dataEpi2$Health, levels=c("Healthy", "Non-inflamed", "Inflamed"))
+
+ggplot(dataEpi2, aes(x=CLR, y=Cluster, fill=Health)) +
+  geom_boxplot(outlier.size = 0) +
+  #geom_point(position = position_dodge(width = .75), size=1/5) +
+  theme_classic()
+
+```
+
+## DA analysis
+ 
+### voomCLR
+
+```{r}
+library(limma)
+library(voomCLR)
+design <- model.matrix(~ Health, data=dataEpiMeta)
+
+v <- voomCLR(counts = dataEpiCountMatrix,
+        design = design,
+        block = factor(dataEpiMeta$Subject),
+        plot = TRUE)
+cf <- duplicateCorrelation(v, design, block=factor(dataEpiMeta$Subject))
+v <- voomCLR(counts = dataEpiCountMatrix,
+        design = design,
+        block = factor(dataEpiMeta$Subject),
+        plot = TRUE,
+        correlation = cf$consensus.correlation)
+cf <- duplicateCorrelation(v, design, block=factor(dataEpiMeta$Subject))
+fit <- lmFit(v, 
+             design,
+             block = factor(dataEpiMeta$Subject),
+             correlation = cf$consensus.correlation)
+L <- matrix(0, nrow=ncol(fit$coefficients), ncol=3,
+            dimnames = list(colnames(fit$coefficients), c("NIvsH", "IvsH", "IvsNI")))
+L["HealthNon-inflamed",c("NIvsH")] <- 1
+L["HealthInflamed",c("IvsH")] <- 1
+L[c("HealthInflamed", "HealthNon-inflamed"),3] <- c(1, -1)
+conFit <- contrasts.fit(fit, contrasts = L)
+conFit <- eBayes(conFit)
+plotBeta(conFit)
+
+resList <- list()
+for(cc in 1:3){
+  ttbc <- topTableBC(conFit,
+                     coef=cc,
+                     number=Inf,
+                     sort.by="none")#,
+                     #bootstrap="nonparametric")
+  resList[[cc]] <- ttbc
+}
+```
+
+
+### LinDA
+
+```{r}
+## linda
+library(MicrobiomeStat)
+library(phyloseq)
+lindaRes <- LinDA::linda(otu.tab = dataEpiCountMatrix, # rows features, cols samples
+                                    meta = as.data.frame(dataEpiMeta),
+                                    formula = '~ Health + (1|Subject)',
+                                    type = 'count',
+                                   adaptive=TRUE,
+                                   imputation = FALSE)
+# inflamed vs healthy
+lindaIvsH <- lindaRes$output$HealthInflamed
+# non-inflamed vs healthy
+lindaNIvsH <- lindaRes$output$`HealthNon-inflamed`
+## inflamed vs non-inflamed: code from developers on GitHub
+alp1 <- lindaRes$output$HealthInflamed$log2FoldChange
+se1 <- lindaRes$output$HealthInflamed$lfcSE
+df1 <- lindaRes$output$HealthInflamed$df
+
+alp3 <- lindaRes$output$`HealthNon-inflamed`$log2FoldChange
+se3 <- lindaRes$output$`HealthNon-inflamed`$lfcSE
+df3 <- lindaRes$output$`HealthNon-inflamed`$df
+
+cov13 <- lindaRes$covariance$HealthInflamed$`HealthNon-inflamed`
+
+stat_linDA <- (alp1-alp3) / (sqrt(se1^2+se3^2-2*cov13))
+l2fc_linDA <- alp1-alp3
+names(stat_linDA) <- names(l2fc_linDA) <- rownames(lindaRes$output$SLE_statusSLE)
+pvalue_linDA <- 2 * pt(-abs(stat_linDA), (df1+df3)/2)
+padj_linDA <- p.adjust(pvalue_linDA, method = 'BH')
+lindaIvsNI <- data.frame(log2FoldChange=l2fc_linDA,
+                         stat=stat_linDA, 
+                         pvalue=pvalue_linDA,
+                         padj=padj_linDA,
+                         row.names=rownames(lindaRes$output$HealthInflamed))
+```
+
+
+### NB GLM
+
+```{r}
+library(glmmTMB)
+library(multcomp)
+resDfNBIvsH <- resDfNBNIvsH <- resDfNBIvsNI <- data.frame(population=rownames(dataEpiCountMatrix),
+                      diff=rep(NA,nrow(dataEpiCountMatrix)),
+                      se=rep(NA,nrow(dataEpiCountMatrix)),
+                      pval=rep(NA,nrow(dataEpiCountMatrix)))
+for(pp in 1:nrow(dataEpiCountMatrix)){
+  curY <- dataEpiCountMatrix[pp,]
+  curDf <- cbind(dataEpiMeta, y=curY)
+  m_p <- glmmTMB(y ~ Health + (1|Subject), 
+                 data=curDf,
+                 family=nbinom2(link="log"),
+                 offset = log(colSums(dataEpiCountMatrix)))
+  # inflamed vs healthy
+  resDfNBIvsH[pp,2:4] <- c(summary(m_p)$coefficients$cond[2,1],
+                       summary(m_p)$coefficients$cond[2,2],
+                       summary(m_p)$coefficients$cond[2,4])
+  # non-inflamed vs healthy
+  resDfNBNIvsH[pp,2:4] <- c(summary(m_p)$coefficients$cond[3,1],
+                       summary(m_p)$coefficients$cond[3,2],
+                       summary(m_p)$coefficients$cond[3,4])
+  
+  ## inflamed vs non-inflamed: contrast
+  L <- matrix(0, nrow=nrow(summary(m_p)$coef$cond), ncol=1)
+  rownames(L) <- rownames(summary(m_p)$coef$cond)
+  L[c("HealthInflamed", "HealthNon-inflamed"),1] <- c(1,-1)
+  m_p_contrast <- glht(m_p, 
+       linfct=t(L),
+        coef. = function(x) fixef(x)[["cond"]],
+        vcov. = function(x) vcov(x)[["cond"]],
+       df=NULL)
+  
+
+    resDfNBIvsNI[pp,2:4] <- c(summary(m_p_contrast)$test$coefficients, 
+                         summary(m_p_contrast)$test$sigma,
+                         summary(m_p_contrast)$test$pvalues)
+}
+
+
+resDfNBIvsH$padj <- p.adjust(resDfNBIvsH$pval, "fdr")
+resDfNBNIvsH$padj <- p.adjust(resDfNBNIvsH$pval, "fdr")
+resDfNBIvsNI$padj <- p.adjust(resDfNBIvsNI$pval, "fdr")
+```
+
+
+
+## Summary of results {.tabset .tabset-pills}
+
+### voomCLR
+
+```{r}
+nPopulations <- nrow(dataEpiCountMatrix)
+resDfAll <- data.frame(population = unlist(lapply(resList, rownames)),
+                       contrast = rep(c("NIvsH", "IvsH", "IvsNI"), each=nPopulations),
+                       log2FC = unlist(lapply(resList, function(x) x$logFC)),
+                       padj = unlist(lapply(resList, function(x) x$adj.P.Val))
+                       
+)
+resDfAll$DA <- resDfAll$padj <= 0.05
+
+pHeatVoomCLR <- ggplot(resDfAll, 
+       aes(x=contrast, y=population, color=log2FC, size=DA)) +
+  geom_point()+
+  theme_light()+
+  scale_color_gradient2(low= "blue", mid="gray", high= "red") +
+  theme(strip.text.x = element_text(size=14, angle=90, hjust = 1, vjust = 1)) +
+  xlab("Contrast") +
+  ylab("Cell type")
+pHeatVoomCLR
+```
+
+### LinDA
+
+```{r}
+lindaIvsH$contrast <- "IvsH"
+lindaIvsH$population <- rownames(lindaIvsH)
+lindaIvsNI$contrast <- "IvsNI"
+lindaIvsNI$population <- rownames(lindaIvsNI)
+lindaNIvsH$contrast <- "NIvsH"
+lindaNIvsH$population <- rownames(lindaNIvsH)
+selectCols <- c("population","log2FoldChange", "stat", "pvalue", "padj", "contrast")
+resDfAllLinDA <- rbind(lindaIvsH[,selectCols],
+                       lindaIvsNI[,selectCols],
+                       lindaNIvsH[,selectCols])
+resDfAllLinDA$DA <- resDfAllLinDA$padj <= 0.05
+
+pHeatLinDA <- ggplot(resDfAllLinDA, 
+       aes(x=contrast, y=population, color=log2FoldChange, size=DA)) +
+  geom_point()+
+  theme_light()+
+  scale_color_gradient2(low= "blue", mid="gray", high= "red") +
+  theme(strip.text.x = element_text(size=14, angle=90, hjust = 1, vjust = 1)) +
+  xlab("Contrast") +
+  ylab("Cell type")
+pHeatLinDA
+```
+
+### NB-GLM
+
+```{r}
+resDfNBIvsH$contrast <- "IvsH"
+resDfNBIvsNI$contrast <- "IvsNI"
+resDfNBNIvsH$contrast <- "NIvsH"
+resDfAllNB <- rbind(resDfNBIvsH,
+                       resDfNBIvsNI,
+                       resDfNBNIvsH)
+resDfAllNB$DA <- resDfAllNB$padj <= 0.05
+
+pHeatNB <- ggplot(resDfAllNB, 
+       aes(x=contrast, y=population, color=diff, size=DA)) +
+  geom_point()+
+  theme_light()+
+  scale_color_gradient2(low= "blue", mid="gray", high= "red") +
+  theme(strip.text.x = element_text(size=14, angle=90, hjust = 1, vjust = 1)) +
+  xlab("Contrast") +
+  ylab("Cell type")
+pHeatNB
+```
+
+
+# Lamina propria
+
+## EDA
+
+```{r}
+dataLP <- data[data$Location == "LP",]
+
+dataLP <- dataLP %>%
+  group_by(Sample, Cluster, Subject, Health) %>%
+  summarize(nCells = n()) 
+
+library(tidyverse)
+dataLPWide <- pivot_wider(dataLP,
+                           id_cols = c("Sample", "Subject", "Health"),
+                           names_from = "Cluster",
+                           values_from = "nCells")
+dataLPWide[is.na(dataLPWide)] <- 0
+
+dataLPCountMatrix <- as.matrix(t(dataLPWide[,-c(1:3)]))
+colnames(dataLPCountMatrix) <- dataLPWide$Sample
+dataLPMeta <- dataLPWide[,1:3]
+
+keep <- rowSums(dataLPCountMatrix > 4) >= 6
+dataLPCountMatrix <- dataLPCountMatrix[keep,]
+dataLP <- dataLP[dataLP$Cluster %in% rownames(dataLPCountMatrix),]
+```
+
+```{r, fig.height=12, fig.width=9}
+dataLP2 <- dataLP %>%
+  ungroup() %>%
+  group_by(Sample) %>%
+  mutate(nCellTypes = n(),
+         geoMean = prod(nCells+1)^(1/nCellTypes),
+         CLR = log((nCells+1) / geoMean ))
+dataLP2$Health <- factor(dataLP2$Health, levels=c("Healthy", "Non-inflamed", "Inflamed"))
+
+ggplot(dataLP2, aes(x=CLR, y=Cluster, fill=Health)) +
+  geom_boxplot(outlier.size = 0) +
+  #geom_point(position = position_dodge(width = .75), size=1/5) +
+  theme_classic()
+
+```
+
+
+## DA analysis
+ 
+### voomCLR
+
+```{r}
+library(limma)
+library(voomCLR)
+design <- model.matrix(~ Health, data=dataLPMeta)
+
+v <- voomCLR(counts = dataLPCountMatrix,
+        design = design,
+        block = factor(dataLPMeta$Subject),
+        plot = TRUE)
+cf <- duplicateCorrelation(v, design, block=factor(dataLPMeta$Subject))
+v <- voomCLR(counts = dataLPCountMatrix,
+        design = design,
+        block = factor(dataLPMeta$Subject),
+        plot = TRUE,
+        correlation = cf$consensus.correlation)
+cf <- duplicateCorrelation(v, design, block=factor(dataLPMeta$Subject))
+fit <- lmFit(v, 
+             design,
+             block = factor(dataLPMeta$Subject),
+             correlation = cf$consensus.correlation)
+L <- matrix(0, nrow=ncol(fit$coefficients), ncol=3,
+            dimnames = list(colnames(fit$coefficients), c("NIvsH", "IvsH", "IvsNI")))
+L["HealthNon-inflamed",c("NIvsH")] <- 1
+L["HealthInflamed",c("IvsH")] <- 1
+L[c("HealthInflamed", "HealthNon-inflamed"),3] <- c(1, -1)
+conFit <- contrasts.fit(fit, contrasts = L)
+conFit <- eBayes(conFit)
+plotBeta(conFit)
+
+resList <- list()
+for(cc in 1:3){
+  ttbc <- topTableBC(conFit,
+                     coef=cc,
+                     number=Inf,
+                     sort.by="none")#,
+                     #bootstrap="nonparametric")
+  resList[[cc]] <- ttbc
+}
+```
+
+
+### LinDA
+
+```{r}
+## linda
+library(MicrobiomeStat)
+library(phyloseq)
+lindaRes <- LinDA::linda(otu.tab = dataLPCountMatrix, # rows features, cols samples
+                                    meta = as.data.frame(dataLPMeta),
+                                    formula = '~ Health + (1|Subject)',
+                                    type = 'count',
+                                   adaptive=TRUE,
+                                   imputation = FALSE)
+# inflamed vs healthy
+lindaIvsH <- lindaRes$output$HealthInflamed
+# non-inflamed vs healthy
+lindaNIvsH <- lindaRes$output$`HealthNon-inflamed`
+## inflamed vs non-inflamed: code from developers on GitHub
+alp1 <- lindaRes$output$HealthInflamed$log2FoldChange
+se1 <- lindaRes$output$HealthInflamed$lfcSE
+df1 <- lindaRes$output$HealthInflamed$df
+
+alp3 <- lindaRes$output$`HealthNon-inflamed`$log2FoldChange
+se3 <- lindaRes$output$`HealthNon-inflamed`$lfcSE
+df3 <- lindaRes$output$`HealthNon-inflamed`$df
+
+cov13 <- lindaRes$covariance$HealthInflamed$`HealthNon-inflamed`
+
+stat_linDA <- (alp1-alp3) / (sqrt(se1^2+se3^2-2*cov13))
+l2fc_linDA <- alp1-alp3
+names(stat_linDA) <- names(l2fc_linDA) <- rownames(lindaRes$output$SLE_statusSLE)
+pvalue_linDA <- 2 * pt(-abs(stat_linDA), (df1+df3)/2)
+padj_linDA <- p.adjust(pvalue_linDA, method = 'BH')
+lindaIvsNI <- data.frame(log2FoldChange=l2fc_linDA,
+                         stat=stat_linDA, 
+                         pvalue=pvalue_linDA,
+                         padj=padj_linDA,
+                         row.names=rownames(lindaRes$output$HealthInflamed))
+```
+
+
+### NB GLM
+
+```{r}
+library(glmmTMB)
+library(multcomp)
+resDfNBIvsH <- resDfNBNIvsH <- resDfNBIvsNI <- data.frame(population=rownames(dataLPCountMatrix),
+                      diff=rep(NA,nrow(dataLPCountMatrix)),
+                      se=rep(NA,nrow(dataLPCountMatrix)),
+                      pval=rep(NA,nrow(dataLPCountMatrix)))
+for(pp in 1:nrow(dataLPCountMatrix)){
+  curY <- dataLPCountMatrix[pp,]
+  curDf <- cbind(dataLPMeta, y=curY)
+  m_p <- glmmTMB(y ~ Health + (1|Subject), 
+                 data=curDf,
+                 family=nbinom2(link="log"),
+                 offset = log(colSums(dataLPCountMatrix)))
+  # inflamed vs healthy
+  resDfNBIvsH[pp,2:4] <- c(summary(m_p)$coefficients$cond[2,1],
+                       summary(m_p)$coefficients$cond[2,2],
+                       summary(m_p)$coefficients$cond[2,4])
+  # non-inflamed vs healthy
+  resDfNBNIvsH[pp,2:4] <- c(summary(m_p)$coefficients$cond[3,1],
+                       summary(m_p)$coefficients$cond[3,2],
+                       summary(m_p)$coefficients$cond[3,4])
+  
+  ## inflamed vs non-inflamed: contrast
+  L <- matrix(0, nrow=nrow(summary(m_p)$coef$cond), ncol=1)
+  rownames(L) <- rownames(summary(m_p)$coef$cond)
+  L[c("HealthInflamed", "HealthNon-inflamed"),1] <- c(1,-1)
+  m_p_contrast <- glht(m_p, 
+       linfct=t(L),
+        coef. = function(x) fixef(x)[["cond"]],
+        vcov. = function(x) vcov(x)[["cond"]],
+       df=NULL)
+  
+
+    resDfNBIvsNI[pp,2:4] <- c(summary(m_p_contrast)$test$coefficients, 
+                         summary(m_p_contrast)$test$sigma,
+                         summary(m_p_contrast)$test$pvalues)
+}
+
+
+resDfNBIvsH$padj <- p.adjust(resDfNBIvsH$pval, "fdr")
+resDfNBNIvsH$padj <- p.adjust(resDfNBNIvsH$pval, "fdr")
+resDfNBIvsNI$padj <- p.adjust(resDfNBIvsNI$pval, "fdr")
+```
+
+
+
+## Summary of results {.tabset .tabset-pills}
+
+### voomCLR
+
+```{r}
+nPopulations <- nrow(dataLPCountMatrix)
+resDfAll <- data.frame(population = unlist(lapply(resList, rownames)),
+                       contrast = rep(c("NIvsH", "IvsH", "IvsNI"), each=nPopulations),
+                       log2FC = unlist(lapply(resList, function(x) x$logFC)),
+                       padj = unlist(lapply(resList, function(x) x$adj.P.Val))
+                       
+)
+resDfAll$DA <- resDfAll$padj <= 0.05
+
+pHeatVoomCLR <- ggplot(resDfAll, 
+       aes(x=contrast, y=population, color=log2FC, size=DA)) +
+  geom_point()+
+  theme_light()+
+  scale_color_gradient2(low= "blue", mid="gray", high= "red") +
+  theme(strip.text.x = element_text(size=14, angle=90, hjust = 1, vjust = 1)) +
+  xlab("Contrast") +
+  ylab("Cell type")
+pHeatVoomCLR
+```
+
+### LinDA
+
+```{r}
+lindaIvsH$contrast <- "IvsH"
+lindaIvsH$population <- rownames(lindaIvsH)
+lindaIvsNI$contrast <- "IvsNI"
+lindaIvsNI$population <- rownames(lindaIvsNI)
+lindaNIvsH$contrast <- "NIvsH"
+lindaNIvsH$population <- rownames(lindaNIvsH)
+selectCols <- c("population","log2FoldChange", "stat", "pvalue", "padj", "contrast")
+resDfAllLinDA <- rbind(lindaIvsH[,selectCols],
+                       lindaIvsNI[,selectCols],
+                       lindaNIvsH[,selectCols])
+resDfAllLinDA$DA <- resDfAllLinDA$padj <= 0.05
+
+pHeatLinDA <- ggplot(resDfAllLinDA, 
+       aes(x=contrast, y=population, color=log2FoldChange, size=DA)) +
+  geom_point()+
+  theme_light()+
+  scale_color_gradient2(low= "blue", mid="gray", high= "red") +
+  theme(strip.text.x = element_text(size=14, angle=90, hjust = 1, vjust = 1)) +
+  xlab("Contrast") +
+  ylab("Cell type")
+pHeatLinDA
+```
+
+### NB-GLM
+
+```{r}
+resDfNBIvsH$contrast <- "IvsH"
+resDfNBIvsNI$contrast <- "IvsNI"
+resDfNBNIvsH$contrast <- "NIvsH"
+resDfAllNB <- rbind(resDfNBIvsH,
+                       resDfNBIvsNI,
+                       resDfNBNIvsH)
+resDfAllNB$DA <- resDfAllNB$padj <= 0.05
+
+pHeatNB <- ggplot(resDfAllNB, 
+       aes(x=contrast, y=population, color=diff, size=DA)) +
+  geom_point()+
+  theme_light()+
+  scale_color_gradient2(low= "blue", mid="gray", high= "red") +
+  theme(strip.text.x = element_text(size=14, angle=90, hjust = 1, vjust = 1)) +
+  xlab("Contrast") +
+  ylab("Cell type")
+pHeatNB
+```
+

@@ -218,7 +218,6 @@ fit <- lmFit(v, designAll,
 fit <- lmFit(v, designAll)
 plotBeta(fit)
 fit <- eBayes(fit)
-# tt <- topTableBC(fit, coef="SLE_statusSLE", number=Inf, bootstrap="nonparametric") 
 tt <- topTableBC(fit, coef="SLE_statusSLE", number=Inf, bootstrap="parametric", voomWeights=v$weights) 
 tt
 ttAsian <- tt
@@ -365,7 +364,6 @@ conFit <- contrasts.fit(fit,
                         contrasts = L)
 plotBeta(conFit)
 conFit <- eBayes(conFit)
-# tt <- topTableBC(conFit, number=Inf, coef=1, bootstrap="nonparametric") 
 tt <- topTableBC(conFit, coef=1, number=Inf, 
                  bootstrap="parametric", voomWeights=v$weights, contrastMatrix=L) 
 tt
@@ -528,7 +526,6 @@ fit <- lmFit(v, designAll,
 fit <- lmFit(v, designAll)
 plotBeta(fit)
 fit <- eBayes(fit)
-# tt <- topTableBC(fit, coef="SLE_statusSLE:pop_covEuropean", number=Inf, bootstrap="nonparametric") 
 tt <- topTableBC(fit, coef="SLE_statusSLE:pop_covEuropean", number=Inf, 
                  bootstrap="parametric", voomWeights=v$weights) 
 tt

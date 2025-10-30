@@ -1,0 +1,122 @@
+---
+title: "VoomCLR: Performance evaluation of variants of VoomCLR"
+author: "Alemu Takele Assefa, Bie Verbist, and Koen Van den Berge"
+date: "2025-10-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+
+library(tidyverse)
+library(dplyr)
+library(compositions) 
+library(ggplot2)
+library(plotly)
+
+colorShades <- 
+  c('voomCLR (empirical weights &\nno uncertainity correction)' = "orange",
+    'voomCLR (empirical weights &\nnonparametric bootstrap)' = "orange3", 
+    'voomCLR (empirical weights &\nparametric bootstrap)' = "salmon4", 
+    
+    'voomCLR (NB analytical weights &\nno uncertainity correction)' = "#66B2FF", 
+    'voomCLR (NB analytical weights &\nnonparametric bootstrap)' = "#0000FF", 
+    'voomCLR (NB analytical weights &\nparametric bootstrap)' = "#000099", 
+    
+    'voomCLR (Poisson analytical weight &\nno uncertainity correction)' = "mediumvioletred",
+    'voomCLR (Poisson analytical weights &\nnonparametric bootstrap)' = "purple2",  
+    'voomCLR (Poisson analytical weights &\nparametric bootstrap)' = "purple4")
+
+```
+
+This supplementary file presents the interactive version of the performance summary for the VoomCLR variants derived from simulation studies. The figure shown is the interactive counterpart of Figure 3 in the main manuscript [insert reference]. We first present the static version, followed by the interactive version. Please refer to the paper for details about the methods and the simulation design.
+
+```{r fig3, fig.width=14, fig.height=7, fig.cap="\\textit{FDR-TPR performance curves of nine different voomCLR configurations in two simulation paradigms.} The curves indicate the performance of the methods for testing differential abundance in simulated compositional cell count data. Performance metrics (FDR and TPR) are calculated at 1\\%, 5\\% and 10\\% nominal FDR levels for each simulation setting.  Two simulation strategies are used: (1) non-parametric simulation based on recycling real cell abundance data (using the lupus dataset from), and (2) parametric compositional cell count data simulation using a Dirichlet-Multinomial distribution. Reported metrics are averages from 250 simulation runs for each simulation scenario. Each simulated dataset consists of two independent groups of samples for 11 cell populations. Data is simulated with a sample size of 5, 10 and 20 per group and with a medium level of variability between samples (Dirichlet parameters scaling factor $\\gamma=1$). NB = negative binomial."}
+perfPlotData_for_voomCLRVariants <- readRDS("interactivePerformacePlotData_for_voomCLRVariants.rds")
+
+sel.plt1b <- ggplot(perfPlotData_for_voomCLRVariants %>%
+    mutate(nomFDR = paste0(as.numeric(gsub("thr", "", thr))*100, "%"),
+           nomFDR=factor(nomFDR, levels=c("1%", "5%", "10%"))),
+       aes(x=FDR, y=TPR, colour = method))+
+
+  geom_vline(xintercept = c(0.01, 0.05, 0.1), col="gray", lty=2)+
+  geom_text(data=data.frame(x=c(0.01, 0.05, 0.1),
+                            y=rep(0.2, 3), txt=c("1%", "5%", "10%")),
+            aes(x=x+0.01,y=y, label=txt), size=3, angle=90, inherit.aes = FALSE)+ 
+  geom_line(linewidth=1)+
+  geom_point(size=2, aes(shape=nomFDR))+
+  geom_point(size=1.8, aes(shape=nomFDR), fill="white")+
+  scale_shape_manual(values = c(21, 22, 24))+
+  scale_color_manual(values = colorShades)+
+  # geom_point(data = selected.res.dfb %>%
+  #              subset(thr=="thr0.05"),
+  #            size=3, shape=21, fill="white", stroke=1) +
+  # geom_point(data = selected.res.dfb %>%
+  #              subset(thr=="thr0.05"),
+  #        aes(fill=method), size=0,stroke=0)+
+  facet_grid(sim.method~splitval)+
+  theme_bw() +
+  theme(strip.text.x = element_text(size=14),
+        strip.text.y = element_text(size=13),
+        axis.text.x = element_text(size=13, angle = 45, hjust = 1, vjust = 1),
+         axis.text.y = element_text(size=13),
+        axis.title = element_text(size=15),
+        legend.text=element_text(size=13))+
+ labs(shape="nominal FDR", x="FDR", y="TPR")+
+  guides(fill=guide_legend(override.aes = list(size=3)))+
+  coord_cartesian(ylim=c(0.15, 0.85))
+
+sel.plt1b
+```
+
+The following plot is the interactive version of the above performance comparison plot. Click to select and double click to deselect lines (for methods). Use the shape (nominal FDR) and color (method) legend from the above static plot.
+
+```{r, fig.width=14, fig.height=10}
+perfPlotData_for_voomCLRVariants.HL <- highlight_key(perfPlotData_for_voomCLRVariants %>%
+    mutate(nomFDR = paste0(as.numeric(gsub("thr", "", thr))*100, "%"),
+           nomFDR=factor(nomFDR, levels=c("1%", "5%", "10%"))), ~method)
+
+sel.plt1b.HL <- ggplot(perfPlotData_for_voomCLRVariants.HL,
+       aes(x=FDR, y=TPR, txt=method))+
+
+  geom_vline(xintercept = c(0.01, 0.05, 0.1), col="gray", lty=2)+
+  geom_text(data=data.frame(x=c(0.01, 0.05, 0.1),
+                            y=rep(0.2, 3), txt=c("1%", "5%", "10%")),
+            aes(x=x+0.01,y=y, label=txt), size=3, angle=90, inherit.aes = FALSE)+
+  geom_line(aes(colour = method), linewidth=1)+
+ 
+  geom_point(size=2, aes(shape=nomFDR))+
+  geom_point(size=1.8, aes(shape=nomFDR), fill="white")+
+  scale_shape_manual(values = c(21, 22, 24), name="Nominal FDR")+
+  scale_color_manual(values = colorShades, name="Method")+
+  # geom_point(data = selected.res.dfb %>%
+  #              subset(thr=="thr0.05"),
+  #            size=3, shape=21, fill="white", stroke=1) +
+  # geom_point(data = selected.res.dfb %>%
+  #              subset(thr=="thr0.05"),
+  #        aes(fill=method), size=0,stroke=0)+
+  facet_grid(sim.method~splitval)+
+  theme_bw() +
+  theme(strip.text.x = element_text(size=14),
+        strip.text.y = element_text(size=13),
+        axis.text.x = element_text(size=13, angle = 45, hjust = 1, vjust = 1),
+         axis.text.y = element_text(size=13),
+        axis.title = element_text(size=15))+
+  labs(shape=NULL, x="FDR", y="TPR")+
+  guides(fill=guide_legend(override.aes = list(size=3)))+
+  coord_cartesian(ylim=c(0, 1))
+
+gg <- ggplotly(sel.plt1b.HL, tooltip = "txt", width = 900, height = 700)
+#gg
+gg2 <-style(gg, showlegend = FALSE) 
+#gg2
+
+highlight(gg2,  dynamic = FALSE, off='plotly_doubleclick')
+```
+
+# R Session Info
+```{r}
+sessionInfo()
+```
+

@@ -20,6 +20,7 @@ library(edgeR)
 library(DESeq2)
 library(mixtools)
 library(DCATS)
+library(sccomp)  # added after revision
 # install.packages("https://cran.r-project.org/src/contrib/Archive/rvcheck/rvcheck_0.1.8.tar.gz", repos = NULL)
 # BiocManager::install("ggtree")
 # BiocManager::install("phyloseq")
@@ -860,6 +861,31 @@ runMoldel <- function(dat, model = "NBGLM"){
                          padj = res$fdr[,"x"], 
                          method=model) 
     
+  }else if(model=="SCCOMP"){
+    require(sccomp)
+    sccomp.ounts_obj = dat.wid %>%
+      pivot_longer(cols = c(-id, -total, -group), names_to = "ppls", values_to = "count") %>%
+      mutate(count=as.integer(count))
+    
+    sccomp_result = 
+      sccomp.ounts_obj |>
+      sccomp_estimate( 
+        formula_composition = ~ group, 
+        .sample = id,
+        .cell_group = ppls,
+        .abundance = count, 
+        bimodal_mean_variability_association  = TRUE,
+        cores = 1, verbose = FALSE
+      ) |> 
+      sccomp_test() |>
+      subset(parameter != "(Intercept)")
+    
+    res.df <- data.frame(population = sccomp_result$ppls, 
+                         coef.est = sccomp_result$c_effect,
+                         test.stat = NA,
+                         pval = NA,
+                         padj = sccomp_result$c_FDR, 
+                         method="sccomp") 
   }
   else{
     error("Worng method")

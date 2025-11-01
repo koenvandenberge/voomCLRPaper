@@ -98,7 +98,7 @@ models <- c("NBGLM", "NBGLM_TMB", "linDA", "LMclr", "voomCLR", "edgeR", "DESeq2"
            "voomCLR_bootNonParametric", "voomCLR_bootParametric",
            "voomCLR_NPboot_NBweight", "voomCLR_NPboot_PoisWeight",
            "voomCLR_Pboot_NBweight", "voomCLR_Pboot_PoisWeight",
-           "dcats")
+           "dcats",, "sccopm")
 
 # run simulation for 5, 10 and 20 sample sizes iteratively
 
@@ -206,7 +206,7 @@ models <- c("NBGLM", "NBGLM_TMB", "linDA", "LMclr", "voomCLR", "edgeR", "DESeq2"
            "voomCLR_bootNonParametric", "voomCLR_bootParametric",
            "voomCLR_NPboot_NBweight", "voomCLR_NPboot_PoisWeight",
            "voomCLR_Pboot_NBweight", "voomCLR_Pboot_PoisWeight",
-           "dcats")
+           "dcats", "sccopm")
 
 # run simulation for 5, 10 and 20 sample sizes iteratively
 for(nn in c(5, 10, 20)){
